@@ -108,9 +108,9 @@ export default function App() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--bg)]">
         <div className="text-center">
-          <div className="mx-auto mb-3 h-10 w-10 rounded-xl bg-brand flex items-center justify-center">
-            <span className="text-white font-bold text-lg">S</span>
-          </div>
+          <svg className="mx-auto mb-3" width="36" height="36" viewBox="0 0 28 28" fill="none" style={{filter: 'drop-shadow(0 0 6px rgba(108, 99, 255, 0.4))'}}>
+            <circle cx="14" cy="14" r="11" fill="var(--text)" />
+          </svg>
           <p className="text-sm text-[var(--text-tertiary)]">Loading...</p>
         </div>
       </div>

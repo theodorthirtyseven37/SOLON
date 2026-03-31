@@ -99,7 +99,9 @@ function NavItem({ to, label, icon, collapsed, onClick }: { to: string; label: s
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-          isActive ? 'bg-white/15 text-white' : 'text-white/60 hover:text-white hover:bg-white/10'
+          isActive
+            ? 'bg-[var(--bg-hover)] text-[var(--text)] font-medium'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)]'
         } ${collapsed ? 'justify-center' : ''}`
       }
     >
@@ -113,7 +115,7 @@ function SectionGroup({ section, collapsed, onItemClick }: { section: NavSection
   return (
     <div>
       {!collapsed && (
-        <p className="px-3 pt-4 pb-1 text-[10px] font-medium text-white/40 uppercase tracking-wider">
+        <p className="px-3 pt-4 pb-1 text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
           {section.label}
         </p>
       )}
@@ -148,26 +150,26 @@ export default function Sidebar() {
         <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={closeSidebar} />
       )}
 
-      <aside className={`fixed top-0 left-0 z-50 h-full ${sidebarWidth} bg-brand text-white flex flex-col transition-all lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed top-0 left-0 z-50 h-full ${sidebarWidth} bg-[var(--bg-card)] border-r border-[var(--border)] flex flex-col transition-all lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Logo + collapse toggle */}
         <div className={`flex items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-5'} py-4`}>
           {collapsed ? (
-            <button onClick={toggleSidebarCollapsed} className="p-1 rounded-lg hover:bg-white/10 transition-colors">
+            <button onClick={toggleSidebarCollapsed} className="p-1 rounded-lg hover:bg-[var(--bg-hover)] transition-colors">
               <svg width="20" height="20" viewBox="0 0 28 28" fill="none" style={{filter: 'drop-shadow(0 0 6px rgba(108, 99, 255, 0.4))'}}>
-                <circle cx="14" cy="14" r="11" fill="white" />
+                <circle cx="14" cy="14" r="11" fill="var(--text)" />
               </svg>
             </button>
           ) : (
             <>
               <div className="flex items-center gap-2.5">
                 <svg width="24" height="24" viewBox="0 0 28 28" fill="none" style={{filter: 'drop-shadow(0 0 6px rgba(108, 99, 255, 0.4))'}}>
-                  <circle cx="14" cy="14" r="11" fill="white" />
+                  <circle cx="14" cy="14" r="11" fill="var(--text)" />
                 </svg>
-                <span className="font-semibold text-sm">
+                <span className="font-semibold text-sm text-[var(--text)]">
                   {mode === 'cloud' ? 'Solon Cloud' : 'Solon'}
                 </span>
               </div>
-              <button onClick={toggleSidebarCollapsed} className="p-1 rounded-lg text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors">
+              <button onClick={toggleSidebarCollapsed} className="p-1 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" />
                 </svg>
@@ -191,11 +193,11 @@ export default function Sidebar() {
             <>
               {!collapsed && (
                 <div>
-                  <p className="px-3 pt-4 pb-1 text-[10px] font-medium text-white/40 uppercase tracking-wider flex items-center justify-between">
+                  <p className="px-3 pt-4 pb-1 text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider flex items-center justify-between">
                     <span>Instances</span>
                     <button
                       onClick={() => { closeSidebar(); navigate('/instances') }}
-                      className="text-[10px] text-white/40 hover:text-white/60 transition-colors"
+                      className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
                     >
                       Manage
                     </button>
@@ -203,7 +205,7 @@ export default function Sidebar() {
                   {instances.length === 0 ? (
                     <button
                       onClick={() => { closeSidebar(); navigate('/instances') }}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors w-full"
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors w-full"
                     >
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" />
@@ -218,7 +220,9 @@ export default function Sidebar() {
                         onClick={closeSidebar}
                         className={({ isActive }) =>
                           `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                            isActive ? 'bg-white/15 text-white' : 'text-white/60 hover:text-white hover:bg-white/10'
+                            isActive
+                              ? 'bg-[var(--bg-hover)] text-[var(--text)] font-medium'
+                              : 'text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)]'
                           }`
                         }
                       >
@@ -235,7 +239,7 @@ export default function Sidebar() {
               {/* Admin */}
               {user.role === 'admin' && !collapsed && (
                 <div>
-                  <p className="px-3 pt-4 pb-1 text-[10px] font-medium text-white/40 uppercase tracking-wider">Admin</p>
+                  <p className="px-3 pt-4 pb-1 text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Admin</p>
                   <NavItem
                     to="/admin/users"
                     label="Users"
@@ -252,18 +256,18 @@ export default function Sidebar() {
         </div>
 
         {/* Bottom bar */}
-        <div className={`px-2 py-3 border-t border-white/10 ${collapsed ? 'flex flex-col items-center gap-2' : 'flex items-center justify-between'}`}>
+        <div className={`px-2 py-3 border-t border-[var(--border)] ${collapsed ? 'flex flex-col items-center gap-2' : 'flex items-center justify-between'}`}>
           <ThemeToggle />
           {!collapsed && showLocal && !user && mode === 'local' && (
             <button
               onClick={() => { closeSidebar(); navigate('/login') }}
-              className="text-xs text-white/40 hover:text-white/60 transition-colors"
+              className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
             >
               Sign in &rarr;
             </button>
           )}
           {!collapsed && showLocal && (
-            <span className="text-[11px] text-white/25 flex items-center gap-1.5">
+            <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1.5">
               {tunnel?.enabled && <span className="w-2 h-2 rounded-full bg-green-400" />}
               {version ? `v${version}` : ''}
             </span>
