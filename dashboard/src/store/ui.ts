@@ -11,10 +11,12 @@ interface Toast {
 interface UIState {
   theme: Theme
   sidebarOpen: boolean
+  sidebarCollapsed: boolean
   toasts: Toast[]
   setTheme: (theme: Theme) => void
   toggleTheme: () => void
   setSidebarOpen: (open: boolean) => void
+  toggleSidebarCollapsed: () => void
   addToast: (message: string, type?: Toast['type']) => void
   removeToast: (id: string) => void
 }
@@ -22,6 +24,7 @@ interface UIState {
 export const useUIStore = create<UIState>((set, get) => ({
   theme: 'light',
   sidebarOpen: false,
+  sidebarCollapsed: localStorage.getItem('solon-sidebar-collapsed') === '1',
   toasts: [],
 
   setTheme: (theme) => {
@@ -37,6 +40,12 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+  toggleSidebarCollapsed: () => {
+    const next = !get().sidebarCollapsed
+    localStorage.setItem('solon-sidebar-collapsed', next ? '1' : '0')
+    set({ sidebarCollapsed: next })
+  },
 
   addToast: (message, type = 'info') => {
     const id = Date.now().toString()

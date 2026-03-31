@@ -29,7 +29,7 @@ import Billing from './pages/cloud/Billing'
 import Team from './pages/cloud/Team'
 import AccountSettings from './pages/cloud/AccountSettings'
 import Users from './pages/cloud/Users'
-import Onboarding from './pages/cloud/Onboarding'
+// Onboarding merged into Home page
 
 function RequireLocal({ children }: { children: React.ReactNode }) {
   const mode = useModeStore(s => s.mode)
@@ -72,16 +72,7 @@ function RootRedirect() {
       setRedirect('/login')
       return
     }
-    const dismissed = localStorage.getItem('solon-onboarding-dismissed')
-    if (dismissed) {
-      setRedirect('/instances')
-      return
-    }
-    cloudAPI.getInstances().then(instances => {
-      setRedirect(instances.length === 0 ? '/onboarding' : '/instances')
-    }).catch(() => {
-      setRedirect('/instances')
-    })
+    setRedirect('/home')
   }, [mode, user])
 
   if (!redirect) return null
@@ -140,8 +131,10 @@ export default function App() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<RootRedirect />} />
 
+        {/* Home — works in both local and cloud mode */}
+        <Route path="/home" element={<Home />} />
+
         {/* Local instance routes */}
-        <Route path="/home" element={<LocalRoute><Home /></LocalRoute>} />
         <Route path="/chat" element={<LocalRoute><Chat /></LocalRoute>} />
         <Route path="/models" element={<LocalRoute><Models /></LocalRoute>} />
         <Route path="/keys" element={<LocalRoute><Keys /></LocalRoute>} />
@@ -152,7 +145,6 @@ export default function App() {
         <Route path="/setup" element={<LocalRoute><Setup onComplete={() => window.location.href = '/home'} /></LocalRoute>} />
 
         {/* Cloud routes */}
-        <Route path="/onboarding" element={<RequireCloudAuth><Onboarding /></RequireCloudAuth>} />
         <Route path="/instances" element={<RequireCloudAuth><Instances /></RequireCloudAuth>} />
         <Route path="/instances/:id" element={<RequireCloudAuth><InstanceDetail /></RequireCloudAuth>}>
           <Route index element={<Home />} />

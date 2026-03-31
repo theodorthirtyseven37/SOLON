@@ -4,11 +4,13 @@ import Sidebar from '../components/Sidebar'
 import { useInstancesStore } from '../store/instances'
 import { useModeStore } from '../store/mode'
 import { useServerStore } from '../store/server'
+import { useUIStore } from '../store/ui'
 
 export default function AppLayout() {
   const load = useInstancesStore(s => s.load)
   const mode = useModeStore(s => s.mode)
   const fetchServer = useServerStore(s => s.fetch)
+  const collapsed = useUIStore(s => s.sidebarCollapsed)
 
   useEffect(() => {
     if (mode !== 'local') {
@@ -25,7 +27,7 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-[var(--bg)]">
       <Sidebar />
-      <div className="lg:pl-60">
+      <div className={`transition-all ${collapsed ? 'lg:pl-14' : 'lg:pl-60'}`}>
         <Outlet />
       </div>
     </div>
