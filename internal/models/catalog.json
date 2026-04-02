@@ -23,9 +23,9 @@
     "context": 128000,
     "vram": {"4b": 3.3, "9b": 5.5, "27b": 17.2},
     "sources": {
-      "4b": {"repo": "bartowski/gemma-2-4b-it-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/gemma3-4b-Q4_K_M.gguf"},
-      "9b": {"repo": "bartowski/gemma-2-9b-it-GGUF", "file": "Q4_K_M"},
-      "27b": {"repo": "bartowski/gemma-2-27b-it-GGUF", "file": "Q4_K_M"}
+      "4b": {"repo": "bartowski/google_gemma-3-4b-it-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/gemma3-4b-Q4_K_M.gguf"},
+      "9b": {"repo": "bartowski/google_gemma-3-9b-it-GGUF", "file": "Q4_K_M"},
+      "27b": {"repo": "bartowski/google_gemma-3-27b-it-GGUF", "file": "Q4_K_M"}
     }
   },
   {
@@ -67,7 +67,7 @@
     "context": 16000,
     "vram": {"mini": 2.5, "14b": 9.1},
     "sources": {
-      "mini": {"repo": "bartowski/phi-4-mini-instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/phi4-mini-Q4_K_M.gguf"},
+      "mini": {"repo": "bartowski/microsoft_Phi-4-mini-instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/phi4-mini-Q4_K_M.gguf"},
       "14b": {"repo": "bartowski/phi-4-GGUF", "file": "Q4_K_M"}
     }
   },
@@ -98,7 +98,7 @@
     "context": 32000,
     "vram": {"8x7b": 26.0},
     "sources": {
-      "8x7b": {"repo": "bartowski/Mixtral-8x7B-Instruct-v0.1-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/mixtral-8x7b-Q4_K_M.gguf"}
+      "8x7b": {"repo": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/mixtral-8x7b-Q4_K_M.gguf"}
     }
   },
   {
