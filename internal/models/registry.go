@@ -12,8 +12,9 @@ import (
 
 // ModelSource maps a friendly name to a HuggingFace repo and file filter.
 type ModelSource struct {
-	Repo string `json:"repo"` // "bartowski/Llama-3.2-3B-Instruct-GGUF"
-	File string `json:"file"` // "Q4_K_M" (substring filter for GGUF filename)
+	Repo  string `json:"repo"`            // "bartowski/Llama-3.2-3B-Instruct-GGUF"
+	File  string `json:"file"`            // "Q4_K_M" (substring filter for GGUF filename)
+	R2URL string `json:"r2_url,omitempty"` // Direct download URL from Solon's R2 mirror
 }
 
 // DefaultModels contains built-in model name mappings, loaded from catalog.json.
@@ -74,15 +75,35 @@ func NewRegistry(dataDir string) (*Registry, error) {
 }
 
 // Pull downloads a model by name or direct HF repo reference.
+// Tries Solon's R2 mirror first, falls back to HuggingFace.
 func (r *Registry) Pull(ctx context.Context, name string, progressFn func(event DownloadProgress)) error {
 	source, err := r.resolveSource(name)
 	if err != nil {
 		return err
 	}
 
-	result, err := DownloadModel(ctx, source.Repo, source.File, filepath.Join(r.modelsDir, "blobs"), progressFn)
-	if err != nil {
-		return fmt.Errorf("downloading model %s: %w", name, err)
+	blobsDir := filepath.Join(r.modelsDir, "blobs")
+
+	// Try R2 mirror first
+	var result *DownloadResult
+	if source.R2URL != "" {
+		if progressFn != nil {
+			progressFn(DownloadProgress{Event: "start", Message: "downloading from Solon mirror"})
+		}
+		result, err = DownloadFromURL(ctx, source.R2URL, blobsDir, progressFn)
+		if err != nil {
+			// R2 failed — fall back to HuggingFace
+			result = nil
+			err = nil
+		}
+	}
+
+	// Fall back to HuggingFace
+	if result == nil {
+		result, err = DownloadModel(ctx, source.Repo, source.File, blobsDir, progressFn)
+		if err != nil {
+			return fmt.Errorf("downloading model %s: %w", name, err)
+		}
 	}
 
 	// Normalize model name for manifest filename

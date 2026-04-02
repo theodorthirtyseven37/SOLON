@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,106 @@ type DownloadResult struct {
 	RelPath  string // relative path under blobs dir, e.g. "blobs/sha256-abc123.gguf"
 	Size     int64
 	SHA256   string
+}
+
+// DownloadFromURL downloads a GGUF file from a direct URL (e.g. R2 mirror).
+func DownloadFromURL(ctx context.Context, url, blobsDir string, progressFn func(DownloadProgress)) (*DownloadResult, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("downloading from mirror: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("mirror returned %d", resp.StatusCode)
+	}
+
+	// Extract filename from URL
+	parts := strings.Split(url, "/")
+	filename := parts[len(parts)-1]
+	if filename == "" {
+		filename = "model.gguf"
+	}
+
+	tmpPath := filepath.Join(blobsDir, ".download-"+filename)
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating temp file: %w", err)
+	}
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	total := resp.ContentLength
+
+	if progressFn != nil {
+		progressFn(DownloadProgress{Event: "start", File: filename, Total: total})
+	}
+
+	h := sha256.New()
+	var downloaded int64
+	buf := make([]byte, 256*1024) // 256KB chunks
+
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, err := out.Write(buf[:n]); err != nil {
+				_ = out.Close()
+				return nil, fmt.Errorf("writing file: %w", err)
+			}
+			_, _ = h.Write(buf[:n])
+			downloaded += int64(n)
+
+			if progressFn != nil && total > 0 {
+				progressFn(DownloadProgress{
+					Event:      "progress",
+					File:       filename,
+					Downloaded: downloaded,
+					Total:      total,
+					Percent:    float64(downloaded) / float64(total) * 100,
+				})
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			_ = out.Close()
+			return nil, fmt.Errorf("reading response: %w", readErr)
+		}
+	}
+	_ = out.Close()
+
+	hash := fmt.Sprintf("%x", h.Sum(nil))
+	blobName := fmt.Sprintf("sha256-%s.gguf", hash[:16])
+	blobPath := filepath.Join(blobsDir, blobName)
+	_ = os.Remove(blobPath)
+
+	if err := os.Rename(tmpPath, blobPath); err != nil {
+		if err := copyFile(tmpPath, blobPath); err != nil {
+			return nil, fmt.Errorf("moving file to blobs: %w", err)
+		}
+	}
+
+	if progressFn != nil {
+		progressFn(DownloadProgress{Event: "done", File: filename, Message: "download complete"})
+	}
+
+	info, _ := os.Stat(blobPath)
+	size := int64(0)
+	if info != nil {
+		size = info.Size()
+	}
+
+	return &DownloadResult{
+		Filename: filename,
+		RelPath:  filepath.Join("blobs", blobName),
+		Size:     size,
+		SHA256:   hash,
+	}, nil
 }
 
 // DownloadModel downloads a GGUF model from HuggingFace.

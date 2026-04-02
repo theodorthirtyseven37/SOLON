@@ -9,7 +9,7 @@
     "context": 128000,
     "vram": {"3b": 2.0, "8b": 4.7},
     "sources": {
-      "3b": {"repo": "bartowski/Llama-3.2-3B-Instruct-GGUF", "file": "Q4_K_M"},
+      "3b": {"repo": "bartowski/Llama-3.2-3B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/llama3.2-3b-Q4_K_M.gguf"},
       "8b": {"repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF", "file": "Q4_K_M"}
     }
   },
