@@ -10,7 +10,7 @@
     "vram": {"3b": 2.0, "8b": 4.7},
     "sources": {
       "3b": {"repo": "bartowski/Llama-3.2-3B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/llama3.2-3b-Q4_K_M.gguf"},
-      "8b": {"repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF", "file": "Q4_K_M"}
+      "8b": {"repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/llama3.1-8b-Q4_K_M.gguf"}
     }
   },
   {
@@ -23,7 +23,7 @@
     "context": 128000,
     "vram": {"4b": 3.3, "9b": 5.5, "27b": 17.2},
     "sources": {
-      "4b": {"repo": "bartowski/gemma-2-4b-it-GGUF", "file": "Q4_K_M"},
+      "4b": {"repo": "bartowski/gemma-2-4b-it-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/gemma3-4b-Q4_K_M.gguf"},
       "9b": {"repo": "bartowski/gemma-2-9b-it-GGUF", "file": "Q4_K_M"},
       "27b": {"repo": "bartowski/gemma-2-27b-it-GGUF", "file": "Q4_K_M"}
     }
@@ -39,7 +39,7 @@
     "vram": {"1.5b": 1.3, "7b": 4.7, "14b": 9.0, "32b": 20.5},
     "sources": {
       "1.5b": {"repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF", "file": "Q4_K_M"},
-      "7b": {"repo": "Qwen/Qwen2.5-7B-Instruct-GGUF", "file": "Q4_K_M"},
+      "7b": {"repo": "Qwen/Qwen2.5-7B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/qwen2.5-7b-Q4_K_M.gguf"},
       "14b": {"repo": "Qwen/Qwen2.5-14B-Instruct-GGUF", "file": "Q4_K_M"},
       "32b": {"repo": "Qwen/Qwen2.5-32B-Instruct-GGUF", "file": "Q4_K_M"}
     }
@@ -54,19 +54,20 @@
     "context": 32000,
     "vram": {"7b": 4.1},
     "sources": {
-      "7b": {"repo": "mistralai/Mistral-7B-Instruct-v0.3-GGUF", "file": "Q4_K_M"}
+      "7b": {"repo": "mistralai/Mistral-7B-Instruct-v0.3-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/mistral-7b-Q4_K_M.gguf"}
     }
   },
   {
     "name": "phi4",
     "description": "Microsoft's small language model. Punches well above its weight class.",
     "creator": "Microsoft",
-    "sizes": ["14b"],
+    "sizes": ["mini", "14b"],
     "category": "chat",
     "capabilities": ["chat", "reasoning", "code"],
     "context": 16000,
-    "vram": {"14b": 9.1},
+    "vram": {"mini": 2.5, "14b": 9.1},
     "sources": {
+      "mini": {"repo": "bartowski/phi-4-mini-instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/phi4-mini-Q4_K_M.gguf"},
       "14b": {"repo": "bartowski/phi-4-GGUF", "file": "Q4_K_M"}
     }
   },
@@ -82,9 +83,35 @@
     "sources": {
       "1.5b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF", "file": "Q4_K_M"},
       "7b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF", "file": "Q4_K_M"},
-      "14b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF", "file": "Q4_K_M"},
+      "14b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/deepseek-r1-14b-Q4_K_M.gguf"},
       "32b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF", "file": "Q4_K_M"},
       "70b": {"repo": "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "mixtral",
+    "description": "Mixture-of-experts model. Fast inference with strong quality.",
+    "creator": "Mistral AI",
+    "sizes": ["8x7b"],
+    "category": "chat",
+    "capabilities": ["chat", "reasoning", "code"],
+    "context": 32000,
+    "vram": {"8x7b": 26.0},
+    "sources": {
+      "8x7b": {"repo": "bartowski/Mixtral-8x7B-Instruct-v0.1-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/mixtral-8x7b-Q4_K_M.gguf"}
+    }
+  },
+  {
+    "name": "llama3.1",
+    "description": "Meta's 70B parameter model. Best open model for demanding workloads.",
+    "creator": "Meta",
+    "sizes": ["70b"],
+    "category": "chat",
+    "capabilities": ["chat", "reasoning", "code"],
+    "context": 128000,
+    "vram": {"70b": 40.0},
+    "sources": {
+      "70b": {"repo": "bartowski/Meta-Llama-3.1-70B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/llama3.1-70b-Q4_K_M.gguf"}
     }
   },
   {
