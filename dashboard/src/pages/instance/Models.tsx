@@ -4,6 +4,7 @@ import { useServerStore } from '../../store/server'
 import { pullModel } from '../../api/local'
 import Badge from '../../components/Badge'
 import type { ModelInfo, CatalogModel, DownloadProgress } from '../../api/types'
+import staticCatalog from '../../data/catalog.json'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -82,8 +83,11 @@ export default function Models() {
 
   useEffect(() => {
     Promise.all([
-      api.models().then(setModels),
-      api.catalog().then(setCatalogModels),
+      api.models().then(setModels).catch(() => {}),
+      api.catalog().then(setCatalogModels).catch(() => {
+        // Fallback to static catalog when API unavailable
+        setCatalogModels(staticCatalog as unknown as CatalogModel[])
+      }),
     ]).finally(() => setLoading(false))
   }, [api])
 

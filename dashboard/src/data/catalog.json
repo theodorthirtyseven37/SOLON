@@ -1,0 +1,187 @@
+[
+  {
+    "name": "llama3.2",
+    "description": "Meta's latest open source LLM. Great all-around performance for chat, reasoning, and instruction following.",
+    "creator": "Meta",
+    "sizes": ["3b", "8b"],
+    "category": "chat",
+    "capabilities": ["chat", "reasoning"],
+    "context": 128000,
+    "vram": {"3b": 2.0, "8b": 4.7},
+    "sources": {
+      "3b": {"repo": "bartowski/Llama-3.2-3B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/llama3.2-3b-Q4_K_M.gguf"},
+      "8b": {"repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/llama3.1-8b-Q4_K_M.gguf"}
+    }
+  },
+  {
+    "name": "gemma3",
+    "description": "Google's lightweight open model family. Fast inference with strong multilingual and vision capabilities.",
+    "creator": "Google",
+    "sizes": ["4b", "9b", "27b"],
+    "category": "chat",
+    "capabilities": ["chat", "vision", "multilingual"],
+    "context": 128000,
+    "vram": {"4b": 3.3, "9b": 5.5, "27b": 17.2},
+    "sources": {
+      "4b": {"repo": "bartowski/google_gemma-3-4b-it-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/gemma3-4b-Q4_K_M.gguf"},
+      "9b": {"repo": "bartowski/google_gemma-3-9b-it-GGUF", "file": "Q4_K_M"},
+      "27b": {"repo": "bartowski/google_gemma-3-27b-it-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "qwen2.5",
+    "description": "Strong at code, math, and multilingual tasks. Excellent cost-to-performance ratio.",
+    "creator": "Alibaba",
+    "sizes": ["1.5b", "7b", "14b", "32b"],
+    "category": "chat",
+    "capabilities": ["chat", "code", "multilingual"],
+    "context": 128000,
+    "vram": {"1.5b": 1.3, "7b": 4.7, "14b": 9.0, "32b": 20.5},
+    "sources": {
+      "1.5b": {"repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF", "file": "Q4_K_M"},
+      "7b": {"repo": "Qwen/Qwen2.5-7B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/qwen2.5-7b-Q4_K_M.gguf"},
+      "14b": {"repo": "Qwen/Qwen2.5-14B-Instruct-GGUF", "file": "Q4_K_M"},
+      "32b": {"repo": "Qwen/Qwen2.5-32B-Instruct-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "mistral",
+    "description": "Compact and efficient. Strong reasoning capabilities in a small footprint.",
+    "creator": "Mistral AI",
+    "sizes": ["7b"],
+    "category": "chat",
+    "capabilities": ["chat", "reasoning"],
+    "context": 32000,
+    "vram": {"7b": 4.1},
+    "sources": {
+      "7b": {"repo": "mistralai/Mistral-7B-Instruct-v0.3-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/mistral-7b-Q4_K_M.gguf"}
+    }
+  },
+  {
+    "name": "phi4",
+    "description": "Microsoft's small language model. Punches well above its weight class.",
+    "creator": "Microsoft",
+    "sizes": ["mini", "14b"],
+    "category": "chat",
+    "capabilities": ["chat", "reasoning", "code"],
+    "context": 16000,
+    "vram": {"mini": 2.5, "14b": 9.1},
+    "sources": {
+      "mini": {"repo": "bartowski/microsoft_Phi-4-mini-instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/phi4-mini-Q4_K_M.gguf"},
+      "14b": {"repo": "bartowski/phi-4-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "deepseek-r1",
+    "description": "Reasoning model with built-in chain-of-thought. Strong on math and logic.",
+    "creator": "DeepSeek",
+    "sizes": ["1.5b", "7b", "14b", "32b", "70b"],
+    "category": "chat",
+    "capabilities": ["reasoning", "chat"],
+    "context": 128000,
+    "vram": {"1.5b": 1.1, "7b": 4.7, "14b": 9.0, "32b": 20.0, "70b": 43.0},
+    "sources": {
+      "1.5b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF", "file": "Q4_K_M"},
+      "7b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF", "file": "Q4_K_M"},
+      "14b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/deepseek-r1-14b-Q4_K_M.gguf"},
+      "32b": {"repo": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF", "file": "Q4_K_M"},
+      "70b": {"repo": "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "mixtral",
+    "description": "Mixture-of-experts model. Fast inference with strong quality.",
+    "creator": "Mistral AI",
+    "sizes": ["8x7b"],
+    "category": "chat",
+    "capabilities": ["chat", "reasoning", "code"],
+    "context": 32000,
+    "vram": {"8x7b": 26.0},
+    "sources": {
+      "8x7b": {"repo": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/mixtral-8x7b-Q4_K_M.gguf"}
+    }
+  },
+  {
+    "name": "llama3.1",
+    "description": "Meta's 70B parameter model. Best open model for demanding workloads.",
+    "creator": "Meta",
+    "sizes": ["70b"],
+    "category": "chat",
+    "capabilities": ["chat", "reasoning", "code"],
+    "context": 128000,
+    "vram": {"70b": 40.0},
+    "sources": {
+      "70b": {"repo": "bartowski/Meta-Llama-3.1-70B-Instruct-GGUF", "file": "Q4_K_M", "r2_url": "https://pub-ceabcf6fa0bd445f944e5343aab8cd05.r2.dev/llama3.1-70b-Q4_K_M.gguf"}
+    }
+  },
+  {
+    "name": "command-r",
+    "description": "Optimized for RAG and tool use. Built for enterprise applications.",
+    "creator": "Cohere",
+    "sizes": ["7b", "35b"],
+    "category": "chat",
+    "capabilities": ["chat", "rag"],
+    "context": 128000,
+    "vram": {"7b": 4.5, "35b": 20.8},
+    "sources": {
+      "7b": {"repo": "bartowski/c4ai-command-r7b-12-2024-GGUF", "file": "Q4_K_M"},
+      "35b": {"repo": "bartowski/c4ai-command-r-v01-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "codellama",
+    "description": "Code-specialized LLM. Built for generation, completion, and explanation.",
+    "creator": "Meta",
+    "sizes": ["7b", "13b", "34b"],
+    "category": "code",
+    "capabilities": ["code", "chat"],
+    "context": 16000,
+    "vram": {"7b": 3.8, "13b": 7.4, "34b": 19.0},
+    "sources": {
+      "7b": {"repo": "bartowski/CodeLlama-7b-Instruct-GGUF", "file": "Q4_K_M"},
+      "13b": {"repo": "bartowski/CodeLlama-13b-Instruct-GGUF", "file": "Q4_K_M"},
+      "34b": {"repo": "bartowski/CodeLlama-34b-Instruct-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "starcoder2",
+    "description": "Trained on The Stack v2. Strong across 600+ programming languages.",
+    "creator": "BigCode",
+    "sizes": ["3b", "7b", "15b"],
+    "category": "code",
+    "capabilities": ["code"],
+    "context": 16000,
+    "vram": {"3b": 1.7, "7b": 4.0, "15b": 9.0},
+    "sources": {
+      "3b": {"repo": "bartowski/starcoder2-3b-GGUF", "file": "Q4_K_M"},
+      "7b": {"repo": "bartowski/starcoder2-7b-GGUF", "file": "Q4_K_M"},
+      "15b": {"repo": "bartowski/starcoder2-15b-GGUF", "file": "Q4_K_M"}
+    }
+  },
+  {
+    "name": "nomic-embed-text",
+    "description": "High-performance text embeddings for search, RAG, and clustering.",
+    "creator": "Nomic AI",
+    "sizes": ["137m"],
+    "category": "embedding",
+    "capabilities": ["embedding", "rag"],
+    "context": 8192,
+    "vram": {"137m": 0.3},
+    "sources": {
+      "137m": {"repo": "nomic-ai/nomic-embed-text-v1.5-GGUF", "file": "Q8_0"}
+    }
+  },
+  {
+    "name": "mxbai-embed-large",
+    "description": "State-of-the-art embeddings. Top of the MTEB leaderboard at its size.",
+    "creator": "Mixedbread",
+    "sizes": ["335m"],
+    "category": "embedding",
+    "capabilities": ["embedding", "rag"],
+    "context": 512,
+    "vram": {"335m": 0.5},
+    "sources": {
+      "335m": {"repo": "mixedbread-ai/mxbai-embed-large-v1-GGUF", "file": "Q8_0"}
+    }
+  }
+]
