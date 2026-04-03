@@ -73,16 +73,25 @@ func (g *Gateway) LocalhostOrAuth(next http.Handler) http.Handler {
 }
 
 func isLocalhost(r *http.Request) bool {
-	// If X-Forwarded-For is set, a reverse proxy (Caddy) forwarded this request
-	// from an external client — treat it as remote, not localhost.
-	if r.Header.Get("X-Forwarded-For") != "" {
+	// Reject if any proxy headers are present — these indicate the request
+	// was forwarded from an external client through a reverse proxy.
+	if r.Header.Get("X-Forwarded-For") != "" ||
+		r.Header.Get("X-Real-Ip") != "" ||
+		r.Header.Get("Cf-Connecting-Ip") != "" {
 		return false
 	}
+
+	// Parse the actual TCP peer address (not spoofable)
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		host = r.RemoteAddr
+		return false // Malformed RemoteAddr — reject
 	}
-	return host == "127.0.0.1" || host == "::1" || host == "localhost"
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback()
 }
 
 // isTunnelRequest detects if a request came through a Cloudflare tunnel.

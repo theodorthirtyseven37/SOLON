@@ -23,15 +23,16 @@ import (
 
 // Config holds gateway configuration.
 type Config struct {
-	Port       int
-	Version    string
-	Engine     *inference.Engine
-	Store      *storage.DB
-	Tunnel     tunnel.Tunnel
-	Relay      RemoteAccess
-	Guardrails *guardrails.Config
-	Policies   *guardrails.PolicyStore
-	Sandboxes  *sandbox.Manager
+	Port           int
+	Version        string
+	Engine         *inference.Engine
+	Store          *storage.DB
+	Tunnel         tunnel.Tunnel
+	Relay          RemoteAccess
+	Guardrails     *guardrails.Config
+	Policies       *guardrails.PolicyStore
+	Sandboxes      *sandbox.Manager
+	AllowedOrigins []string // CORS allowed origins; empty = default (localhost + app.getsolon.dev)
 }
 
 // RemoteAccess provides relay status info (optional).
@@ -43,17 +44,18 @@ type RemoteAccess interface {
 
 // Gateway is the main HTTP server that handles auth, routing, and middleware.
 type Gateway struct {
-	router     chi.Router
-	engine     *inference.Engine
-	store      *storage.DB
-	tunnel     tunnel.Tunnel
-	relay      RemoteAccess
-	sandboxes  *sandbox.Manager
-	port       int
-	version    string
-	guardrails *guardrails.Config
-	policies   *guardrails.PolicyStore
-	shield     *guardrails.Shield
+	router         chi.Router
+	engine         *inference.Engine
+	store          *storage.DB
+	tunnel         tunnel.Tunnel
+	relay          RemoteAccess
+	sandboxes      *sandbox.Manager
+	port           int
+	version        string
+	guardrails     *guardrails.Config
+	policies       *guardrails.PolicyStore
+	shield         *guardrails.Shield
+	allowedOrigins map[string]bool
 }
 
 // New creates a new Gateway with the given configuration.
@@ -68,18 +70,33 @@ func New(cfg Config) (*Gateway, error) {
 		shield = guardrails.NewShield(grCfg.Shield.Threshold)
 	}
 
+	// Build allowed origins set for CORS
+	origins := make(map[string]bool)
+	defaultOrigins := []string{
+		fmt.Sprintf("http://localhost:%d", cfg.Port),
+		fmt.Sprintf("http://127.0.0.1:%d", cfg.Port),
+		"https://app.getsolon.dev",
+	}
+	for _, o := range defaultOrigins {
+		origins[o] = true
+	}
+	for _, o := range cfg.AllowedOrigins {
+		origins[o] = true
+	}
+
 	g := &Gateway{
-		router:     chi.NewRouter(),
-		engine:     cfg.Engine,
-		store:      cfg.Store,
-		tunnel:     cfg.Tunnel,
-		relay:      cfg.Relay,
-		sandboxes:  cfg.Sandboxes,
-		port:       cfg.Port,
-		version:    cfg.Version,
-		guardrails: grCfg,
-		policies:   cfg.Policies,
-		shield:     shield,
+		router:         chi.NewRouter(),
+		engine:         cfg.Engine,
+		store:          cfg.Store,
+		tunnel:         cfg.Tunnel,
+		relay:          cfg.Relay,
+		sandboxes:      cfg.Sandboxes,
+		port:           cfg.Port,
+		version:        cfg.Version,
+		guardrails:     grCfg,
+		policies:       cfg.Policies,
+		shield:         shield,
+		allowedOrigins: origins,
 	}
 
 	g.setupRoutes()
@@ -92,7 +109,7 @@ func (g *Gateway) setupRoutes() {
 	// Global middleware
 	r.Use(RequestID)
 	r.Use(Logger)
-	r.Use(CORS)
+	r.Use(g.CORSWithOrigins)
 	r.Use(Recovery)
 
 	// Health check + system info (no auth required, localhost only for system)
