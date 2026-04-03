@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"regexp"
 	"time"
 
@@ -76,7 +76,7 @@ func (m *Manager) EnsureSandboxImage(ctx context.Context) error {
 		}
 	}
 
-	log.Println("[sandbox] Building sandbox image with Chromium + Playwright (this takes ~60s)...")
+	slog.Info("building sandbox image with Chromium + Playwright")
 
 	// Create temp container from node:22-slim
 	tmpID, err := m.docker.containerCreate(ctx, containerConfig{
@@ -140,7 +140,7 @@ func (m *Manager) EnsureSandboxImage(ctx context.Context) error {
 	_ = commitResp.Body.Close()
 
 	cleanup()
-	log.Println("[sandbox] Image built: solon/sandbox:latest")
+	slog.Info("sandbox image built", "image", "solon/sandbox:latest")
 	return nil
 }
 
@@ -322,7 +322,7 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	}
 
 	if err := m.store.UpdateSandboxStatus(id, StatusRunning); err != nil {
-		log.Printf("warning: failed to update sandbox status: %v", err)
+		slog.Warn("failed to update sandbox status", "error", err)
 	}
 	return nil
 }
@@ -342,7 +342,7 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 	}
 
 	if err := m.store.UpdateSandboxStatus(id, StatusStopped); err != nil {
-		log.Printf("warning: failed to update sandbox status: %v", err)
+		slog.Warn("failed to update sandbox status", "error", err)
 	}
 	return nil
 }
@@ -357,14 +357,14 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	// Remove container (force)
 	if sb.ContainerID != "" {
 		if err := m.docker.containerRemove(ctx, sb.ContainerID); err != nil {
-			log.Printf("warning: failed to remove container %s: %v", sb.ContainerID, err)
+			slog.Warn("failed to remove container", "container_id", sb.ContainerID, "error", err)
 		}
 	}
 
 	// Revoke sandbox API key
 	if sb.APIKeyID != "" {
 		if err := m.store.RevokeKey(sb.APIKeyID); err != nil {
-			log.Printf("warning: failed to revoke key %s: %v", sb.APIKeyID, err)
+			slog.Warn("failed to revoke key", "key_id", sb.APIKeyID, "error", err)
 		}
 	}
 
@@ -490,11 +490,11 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 
 	// Step 1: Build the OpenClaw image if it doesn't exist.
 	// Based on solon/sandbox:latest (Playwright-ready) with OpenClaw installed.
-	log.Println("[openclaw] Preparing OpenClaw image...")
+	slog.Info("preparing OpenClaw image")
 
 	// Ensure the base sandbox image exists first (Chromium + Playwright)
 	if err := m.EnsureSandboxImage(ctx); err != nil {
-		log.Printf("[openclaw] Warning: sandbox image build failed, falling back to %s: %v", DefaultImage, err)
+		slog.Warn("sandbox image build failed, falling back", "fallback_image", DefaultImage, "error", err)
 	}
 
 	// Check if OpenClaw image already exists
@@ -504,12 +504,12 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 		_ = imgResp.Body.Close()
 		if imgResp.StatusCode == 200 {
 			needsBuild = false
-			log.Println("[openclaw] Image exists, skipping build")
+			slog.Info("OpenClaw image exists, skipping build")
 		}
 	}
 
 	if needsBuild {
-		log.Println("[openclaw] Installing OpenClaw into image (this takes ~30s)...")
+		slog.Info("installing OpenClaw into image")
 
 		// Use sandbox image (Playwright-ready) as base if available, else fall back
 		baseImage := SandboxImage
@@ -567,7 +567,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 		_ = m.docker.containerStop(ctx, tmpID, 2)
 		_ = m.docker.containerRemove(ctx, tmpID)
 
-		log.Println("[openclaw] Image built: solon/openclaw:latest")
+		slog.Info("OpenClaw image built", "image", "solon/openclaw:latest")
 	}
 
 	// Step 2: Remove any existing openclaw sandbox container
@@ -595,7 +595,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 	status.SandboxID = sandboxID
 
 	// Step 4: Create and start the container with gateway as main process
-	log.Println("[openclaw] Starting OpenClaw gateway...")
+	slog.Info("starting OpenClaw gateway")
 
 	containerID, err := m.docker.containerCreate(ctx, containerConfig{
 		Name: "openclaw-sandbox-openclaw",
@@ -681,7 +681,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 	}
 
 	// Wait for gateway to be ready
-	log.Println("[openclaw] Waiting for gateway...")
+	slog.Info("waiting for OpenClaw gateway")
 	for i := 0; i < 10; i++ {
 		time.Sleep(2 * time.Second)
 		state, err := m.docker.containerInspect(ctx, containerID)
@@ -694,7 +694,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 
 	status.Installed = true
 	status.Running = true
-	log.Println("[openclaw] Ready")
+	slog.Info("OpenClaw gateway ready")
 	return status, nil
 }
 

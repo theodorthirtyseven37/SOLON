@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -36,7 +36,7 @@ var (
 func GetCatalog() []CatalogModel {
 	catalogOnce.Do(func() {
 		if err := json.Unmarshal(embeddedCatalog, &catalog); err != nil {
-			log.Printf("warning: failed to parse embedded catalog: %v", err)
+			slog.Warn("failed to parse embedded catalog", "error", err)
 			catalog = []CatalogModel{}
 		}
 	})
@@ -70,30 +70,30 @@ func RefreshCatalogFromRemote(url string) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		log.Printf("catalog refresh skipped (network error): %v", err)
+		slog.Warn("catalog refresh skipped", "reason", "network error", "error", err)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("catalog refresh skipped (status %d)", resp.StatusCode)
+		slog.Warn("catalog refresh skipped", "reason", "bad status", "status", resp.StatusCode)
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit
 	if err != nil {
-		log.Printf("catalog refresh skipped (read error): %v", err)
+		slog.Warn("catalog refresh skipped", "reason", "read error", "error", err)
 		return
 	}
 
 	var remote []CatalogModel
 	if err := json.Unmarshal(body, &remote); err != nil {
-		log.Printf("catalog refresh skipped (parse error): %v", err)
+		slog.Warn("catalog refresh skipped", "reason", "parse error", "error", err)
 		return
 	}
 
 	if len(remote) > 0 {
 		catalog = remote
-		log.Printf("catalog refreshed: %d models from remote", len(remote))
+		slog.Info("catalog refreshed", "model_count", len(remote))
 	}
 }

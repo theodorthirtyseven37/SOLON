@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -195,7 +195,7 @@ func (c *Cloudflare) enableNamed(ctx context.Context, cloudflaredPath string) er
 
 // enableQuick starts an ephemeral quick tunnel (URL changes on every restart).
 func (c *Cloudflare) enableQuick(ctx context.Context, cloudflaredPath string) error {
-	log.Println("Starting ephemeral tunnel (run 'solon tunnel setup' for a persistent URL)")
+	slog.Info("starting ephemeral tunnel (run 'solon tunnel setup' for a persistent URL)")
 
 	c.cmd = exec.CommandContext(ctx, cloudflaredPath,
 		"tunnel", "--url", fmt.Sprintf("http://localhost:%d", c.port),

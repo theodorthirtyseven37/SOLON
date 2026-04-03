@@ -3,7 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -75,7 +75,7 @@ func (g *Gateway) handleOpenClawWS(w http.ResponseWriter, r *http.Request) {
 		InsecureSkipVerify: true, // We validate origin manually above
 	})
 	if err != nil {
-		log.Printf("[ws-proxy] accept error: %v", err)
+		slog.Error("ws-proxy accept error", "error", err)
 		return
 	}
 	defer func() { _ = browserConn.CloseNow() }()
@@ -90,19 +90,19 @@ func (g *Gateway) handleOpenClawWS(w http.ResponseWriter, r *http.Request) {
 
 	upstreamConn, _, err := websocket.Dial(ctx, upstreamURL, nil)
 	if err != nil {
-		log.Printf("[ws-proxy] upstream dial error: %v", err)
+		slog.Error("ws-proxy upstream dial error", "error", err)
 		_ = browserConn.Close(websocket.StatusBadGateway, "failed to connect to OpenClaw gateway")
 		return
 	}
 	defer func() { _ = upstreamConn.CloseNow() }()
 	upstreamConn.SetReadLimit(wsReadLimit)
 
-	log.Printf("[ws-proxy] connected: browser <-> %s", upstreamURL)
+	slog.Info("ws-proxy connected", "upstream", upstreamURL)
 
 	// Bidirectional proxy
 	proxyWebSocket(ctx, cancel, browserConn, upstreamConn)
 
-	log.Printf("[ws-proxy] disconnected")
+	slog.Info("ws-proxy disconnected")
 }
 
 // proxyWebSocket bridges two WebSocket connections bidirectionally.
@@ -115,7 +115,7 @@ func proxyWebSocket(ctx context.Context, cancel context.CancelFunc, browser, ups
 		defer wg.Done()
 		defer cancel()
 		if err := pipeWS(ctx, upstream, browser); err != nil {
-			log.Printf("[ws-proxy] browser→upstream: %v", err)
+			slog.Debug("ws-proxy browser→upstream closed", "error", err)
 		}
 	}()
 
@@ -124,7 +124,7 @@ func proxyWebSocket(ctx context.Context, cancel context.CancelFunc, browser, ups
 		defer wg.Done()
 		defer cancel()
 		if err := pipeWS(ctx, browser, upstream); err != nil {
-			log.Printf("[ws-proxy] upstream→browser: %v", err)
+			slog.Debug("ws-proxy upstream→browser closed", "error", err)
 		}
 	}()
 

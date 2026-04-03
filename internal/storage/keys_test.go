@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -224,6 +225,191 @@ func TestHasKeys(t *testing.T) {
 	has, err = db.HasKeys()
 	require.NoError(t, err)
 	assert.False(t, has)
+}
+
+func TestCreateKeyWithOptions(t *testing.T) {
+	t.Run("custom rate limit", func(t *testing.T) {
+		db := testDB(t)
+		key, err := db.CreateKeyWithOptions(CreateKeyOptions{
+			Name:      "custom-rl",
+			Scope:     "user",
+			RateLimit: 120,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, 120, key.RateLimit)
+	})
+
+	t.Run("TTL sets expiry", func(t *testing.T) {
+		db := testDB(t)
+		key, err := db.CreateKeyWithOptions(CreateKeyOptions{
+			Name:  "ttl-key",
+			Scope: "user",
+			TTL:   24 * time.Hour,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, key.ExpiresAt)
+		assert.True(t, key.ExpiresAt.After(time.Now()))
+		assert.True(t, key.ExpiresAt.Before(time.Now().Add(25*time.Hour)))
+	})
+
+	t.Run("allowed models persisted", func(t *testing.T) {
+		db := testDB(t)
+		models := []string{"llama3.2:8b", "mistral:7b"}
+		key, err := db.CreateKeyWithOptions(CreateKeyOptions{
+			Name:          "model-key",
+			Scope:         "user",
+			AllowedModels: models,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, models, key.AllowedModels)
+
+		// Validate that models come back on ValidateKey
+		validated, err := db.ValidateKey(key.Raw)
+		require.NoError(t, err)
+		assert.Equal(t, models, validated.AllowedModels)
+	})
+
+	t.Run("tunnel access false", func(t *testing.T) {
+		db := testDB(t)
+		tunnelFalse := false
+		key, err := db.CreateKeyWithOptions(CreateKeyOptions{
+			Name:         "no-tunnel",
+			Scope:        "user",
+			TunnelAccess: &tunnelFalse,
+		})
+		require.NoError(t, err)
+		assert.False(t, key.TunnelAccess)
+
+		validated, err := db.ValidateKey(key.Raw)
+		require.NoError(t, err)
+		assert.False(t, validated.TunnelAccess)
+	})
+
+	t.Run("default scope when empty", func(t *testing.T) {
+		db := testDB(t)
+		key, err := db.CreateKeyWithOptions(CreateKeyOptions{
+			Name: "no-scope",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "user", key.Scope)
+	})
+}
+
+func TestValidateExpiredKey(t *testing.T) {
+	db := testDB(t)
+	key, err := db.CreateKeyWithOptions(CreateKeyOptions{
+		Name:  "expired-key",
+		Scope: "user",
+		TTL:   1 * time.Second,
+	})
+	require.NoError(t, err)
+
+	// Manually set expires_at to the past
+	_, err = db.db.Exec(`UPDATE api_keys SET expires_at = ? WHERE id = ?`,
+		time.Now().Add(-1*time.Hour), key.ID)
+	require.NoError(t, err)
+
+	_, err = db.ValidateKey(key.Raw)
+	assert.Error(t, err, "expired keys should not validate")
+}
+
+func TestGetUsageByKey(t *testing.T) {
+	db := testDB(t)
+
+	// Empty usage
+	usage, err := db.GetUsageByKey()
+	require.NoError(t, err)
+	assert.Empty(t, usage)
+
+	key1, _ := db.CreateKey("key-1", "user")
+	key2, _ := db.CreateKey("key-2", "user")
+
+	_ = db.LogRequest(key1.ID, "POST", "/v1/chat/completions", "llama3.2:8b", 100, 50, 200, 200, "")
+	_ = db.LogRequest(key1.ID, "POST", "/v1/chat/completions", "llama3.2:8b", 200, 100, 300, 200, "")
+	_ = db.LogRequest(key2.ID, "POST", "/v1/embeddings", "nomic-embed-text", 50, 0, 100, 200, "")
+
+	usage, err = db.GetUsageByKey()
+	require.NoError(t, err)
+	assert.Len(t, usage, 2)
+
+	assert.Equal(t, int64(2), usage[key1.ID].RequestCount)
+	assert.Equal(t, int64(450), usage[key1.ID].TotalTokens) // (100+50) + (200+100)
+	assert.Equal(t, int64(1), usage[key2.ID].RequestCount)
+	assert.Equal(t, int64(50), usage[key2.ID].TotalTokens) // 50+0
+}
+
+func TestMigrationIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "idempotent.db")
+
+	// Open, migrate, close
+	db1, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, db1.Close())
+
+	// Reopen — migrations should not fail
+	db2, err := Open(path)
+	require.NoError(t, err)
+	defer func() { _ = db2.Close() }()
+
+	// Verify we can still create keys (schema intact)
+	key, err := db2.CreateKey("after-reopen", "user")
+	require.NoError(t, err)
+	assert.NotEmpty(t, key.ID)
+}
+
+func TestSchemaVersionTracking(t *testing.T) {
+	db := testDB(t)
+
+	version, err := db.GetSchemaVersion()
+	require.NoError(t, err)
+	assert.Equal(t, SchemaVersion, version, "schema version should match SchemaVersion constant")
+}
+
+func TestSchemaVersionHistory(t *testing.T) {
+	db := testDB(t)
+
+	rows, err := db.db.Query(`SELECT version, comment FROM schema_version ORDER BY version`)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+
+	var versions []int
+	for rows.Next() {
+		var v int
+		var comment string
+		require.NoError(t, rows.Scan(&v, &comment))
+		versions = append(versions, v)
+		assert.NotEmpty(t, comment, "each migration should have a comment")
+	}
+
+	assert.Equal(t, SchemaVersion, len(versions), "should have one record per version")
+	for i, v := range versions {
+		assert.Equal(t, i+1, v, "versions should be sequential")
+	}
+}
+
+func TestSchemaVersionIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "version-test.db")
+
+	db1, err := Open(path)
+	require.NoError(t, err)
+	v1, _ := db1.GetSchemaVersion()
+	require.NoError(t, db1.Close())
+
+	// Reopen — should not re-insert version records
+	db2, err := Open(path)
+	require.NoError(t, err)
+	defer func() { _ = db2.Close() }()
+
+	v2, _ := db2.GetSchemaVersion()
+	assert.Equal(t, v1, v2, "version should not change on reopen")
+
+	// Count rows — should still be SchemaVersion (not doubled)
+	var count int
+	err = db2.db.QueryRow(`SELECT COUNT(*) FROM schema_version`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, SchemaVersion, count, "should not duplicate version entries")
 }
 
 func TestOpenDefaultPath(t *testing.T) {

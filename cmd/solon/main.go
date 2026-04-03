@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	osexec "os/exec"
@@ -17,6 +17,7 @@ import (
 	"github.com/openclaw/solon/internal/guardrails"
 	"github.com/openclaw/solon/internal/inference"
 	"github.com/openclaw/solon/internal/inference/backends"
+	"github.com/openclaw/solon/internal/logging"
 	"github.com/openclaw/solon/internal/models"
 	"github.com/openclaw/solon/internal/relay"
 	"github.com/openclaw/solon/internal/sandbox"
@@ -28,6 +29,9 @@ import (
 var version = "dev"
 
 func main() {
+	// Initialize structured logging (JSON when SOLON_LOG_JSON=1, text otherwise)
+	logging.Init(os.Getenv("SOLON_LOG_JSON") == "1")
+
 	root := &cobra.Command{
 		Use:   "solon",
 		Short: "Self-hosted AI runtime with secure web API",
@@ -108,7 +112,7 @@ func serveCmd() *cobra.Command {
 			var providers []backends.Provider
 			dbProviders, err := db.LoadProviders()
 			if err != nil {
-				log.Printf("Warning: could not load providers: %v", err)
+				slog.Warn("could not load providers", "error", err)
 			} else {
 				for _, p := range dbProviders {
 					providers = append(providers, backends.Provider{
@@ -118,7 +122,7 @@ func serveCmd() *cobra.Command {
 					})
 				}
 				if len(providers) > 0 {
-					log.Printf("Loaded %d external provider(s)", len(providers))
+					slog.Info("loaded external providers", "count", len(providers))
 				}
 			}
 
@@ -148,12 +152,12 @@ func serveCmd() *cobra.Command {
 			dockerSocket := "/var/run/docker.sock"
 			sandboxMgr = sandbox.NewManager(dockerSocket, db, port)
 			if sandboxMgr.Available(cmd.Context()) {
-				log.Println("Docker detected — sandbox management enabled")
+				slog.Info("Docker detected, sandbox management enabled")
 				if err := sandboxMgr.EnsureNetwork(cmd.Context()); err != nil {
-					log.Printf("Warning: could not create sandbox network: %v", err)
+					slog.Warn("could not create sandbox network", "error", err)
 				}
 			} else {
-				log.Println("Docker not detected — sandbox management disabled")
+				slog.Info("Docker not detected, sandbox management disabled")
 				sandboxMgr = nil
 			}
 
@@ -204,7 +208,7 @@ func serveCmd() *cobra.Command {
 					gw.SetRelay(rc)
 					go func() {
 						if err := rc.Start(cmd.Context()); err != nil {
-							log.Printf("relay: %v", err)
+							slog.Error("relay error", "error", err)
 						}
 					}()
 					// Wait briefly for connection
