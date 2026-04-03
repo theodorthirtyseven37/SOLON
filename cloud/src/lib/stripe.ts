@@ -9,6 +9,30 @@ export const MANAGED_TIERS: Record<string, { name: string; price: number; server
   gpu: { name: 'GPU', price: 34900, serverType: 'gx11' },
 }
 
+// SaaS subscription tier Stripe price IDs (set via env or hardcoded after Stripe product creation)
+// These are created in Stripe dashboard or via API and stored here for checkout
+export interface SaasTierConfig {
+  name: string
+  priceCents: number
+  interval: 'month'
+  features: string[]
+}
+
+export const SAAS_TIERS: Record<string, SaasTierConfig> = {
+  pro: {
+    name: 'Solon Pro',
+    priceCents: 1900,
+    interval: 'month',
+    features: ['10K API requests/mo', '5 models', 'Daily security scans', 'Email support'],
+  },
+  team: {
+    name: 'Solon Team',
+    priceCents: 4900,
+    interval: 'month',
+    features: ['50K API requests/mo', 'Unlimited models', 'Continuous scanning', '25 team members', 'Priority support'],
+  },
+}
+
 async function stripeRequest(
   path: string,
   secretKey: string,
@@ -86,6 +110,100 @@ export async function createPortalSession(
     return_url: returnUrl,
   }) as { url: string }
   return { url: data.url }
+}
+
+/**
+ * Create a Stripe Checkout session for SaaS plan subscription (Pro/Team).
+ * Uses inline price_data so no pre-created Stripe products are required.
+ */
+export async function createSubscriptionCheckout(
+  secretKey: string,
+  params: {
+    userId: string
+    userEmail: string
+    plan: string
+    customerId?: string
+    successUrl: string
+    cancelUrl: string
+  },
+): Promise<{ id: string; url: string }> {
+  const tierInfo = SAAS_TIERS[params.plan]
+  if (!tierInfo) throw new Error(`Unknown SaaS plan: ${params.plan}`)
+
+  const body: Record<string, string> = {
+    'mode': 'subscription',
+    'success_url': params.successUrl,
+    'cancel_url': params.cancelUrl,
+    'line_items[0][price_data][currency]': 'usd',
+    'line_items[0][price_data][product_data][name]': tierInfo.name,
+    'line_items[0][price_data][product_data][description]': tierInfo.features.join(' · '),
+    'line_items[0][price_data][unit_amount]': String(tierInfo.priceCents),
+    'line_items[0][price_data][recurring][interval]': tierInfo.interval,
+    'line_items[0][quantity]': '1',
+    'metadata[user_id]': params.userId,
+    'metadata[plan]': params.plan,
+    'metadata[type]': 'saas_subscription',
+    'subscription_data[metadata][user_id]': params.userId,
+    'subscription_data[metadata][plan]': params.plan,
+    'subscription_data[metadata][type]': 'saas_subscription',
+  }
+
+  if (params.customerId) {
+    body['customer'] = params.customerId
+  } else {
+    body['customer_email'] = params.userEmail
+  }
+
+  const data = await stripeRequest('/checkout/sessions', secretKey, 'POST', body) as { id: string; url: string }
+  return { id: data.id, url: data.url }
+}
+
+/**
+ * Report metered usage to Stripe for a subscription item.
+ * Used for overage billing on API requests, scans, and bandwidth.
+ */
+export async function reportUsage(
+  secretKey: string,
+  subscriptionItemId: string,
+  quantity: number,
+  timestamp?: number,
+): Promise<void> {
+  const body: Record<string, string> = {
+    quantity: String(quantity),
+    action: 'increment',
+  }
+  if (timestamp) {
+    body['timestamp'] = String(timestamp)
+  }
+
+  await stripeRequest(
+    `/subscription_items/${subscriptionItemId}/usage_records`,
+    secretKey,
+    'POST',
+    body,
+  )
+}
+
+/**
+ * Retrieve a Stripe subscription by ID.
+ */
+export async function getSubscription(
+  secretKey: string,
+  subscriptionId: string,
+): Promise<Record<string, unknown>> {
+  return await stripeRequest(`/subscriptions/${subscriptionId}`, secretKey) as Record<string, unknown>
+}
+
+/**
+ * Cancel a Stripe subscription at period end.
+ */
+export async function cancelSubscription(
+  secretKey: string,
+  subscriptionId: string,
+): Promise<void> {
+  await stripeRequest(`/subscriptions/${subscriptionId}`, secretKey, 'POST', {
+    cancel_at_period_end: 'true',
+  })
 }
 
 // Verify Stripe webhook signature (crypto.subtle compatible)
