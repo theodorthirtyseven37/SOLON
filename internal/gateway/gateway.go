@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -211,7 +211,7 @@ func (g *Gateway) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 
 	var req inference.ChatCompletionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		log.Printf("decode error: %v | body: %s", err, string(body[:min(len(body), 500)]))
+		slog.Warn("decode error", "error", err, "body", string(body[:min(len(body), 500)]))
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 		return
 	}
@@ -527,7 +527,7 @@ func (g *Gateway) handleAnthropicMessages(w http.ResponseWriter, r *http.Request
 
 	resp, err := anthropicProxyClient.Do(upReq)
 	if err != nil {
-		log.Printf("anthropic proxy error: %v", err)
+		slog.Error("anthropic proxy error", "error", err)
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("upstream error: %v", err))
 		return
 	}

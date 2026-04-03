@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -59,11 +59,11 @@ func NewEngineWithOptions(opts EngineOptions) (*Engine, error) {
 	// Initialize model registry
 	dataDir, err := models.DataDir()
 	if err != nil {
-		log.Printf("Warning: could not determine data dir for registry: %v", err)
+		slog.Warn("could not determine data dir for registry", "error", err)
 	} else {
 		reg, err := models.NewRegistry(dataDir)
 		if err != nil {
-			log.Printf("Warning: could not initialize model registry: %v", err)
+			slog.Warn("could not initialize model registry", "error", err)
 		} else {
 			e.registry = reg
 		}
@@ -104,9 +104,9 @@ func NewEngineWithOptions(opts EngineOptions) (*Engine, error) {
 	// Preload models if specified
 	for _, name := range e.preload {
 		if _, err := e.ensureLoaded(name); err != nil {
-			log.Printf("Warning: could not preload model %s: %v", name, err)
+			slog.Warn("could not preload model", "model", name, "error", err)
 		} else {
-			log.Printf("Preloaded model: %s", name)
+			slog.Info("preloaded model", "model", name)
 		}
 	}
 
@@ -223,7 +223,7 @@ func (e *Engine) evictLRU() {
 			_ = lm.Backend.UnloadModel(context.Background(), lm.Model)
 		}
 		delete(e.loadedModels, oldestName)
-		log.Printf("Evicted model %s (LRU)", oldestName)
+		slog.Info("evicted model", "model", oldestName, "reason", "LRU")
 	}
 }
 
@@ -318,7 +318,7 @@ func (e *Engine) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	if e.registry != nil {
 		regModels, err := e.registry.List()
 		if err != nil {
-			log.Printf("Warning: could not list registry models: %v", err)
+			slog.Warn("could not list registry models", "error", err)
 		} else {
 			for _, m := range regModels {
 				allModels = append(allModels, ModelInfo{

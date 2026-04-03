@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -246,6 +247,193 @@ func TestRequireAdminScope(t *testing.T) {
 			assert.Equal(t, tt.wantStatus, rec.Code)
 		})
 	}
+}
+
+func TestNormalizeAnthropicAuth(t *testing.T) {
+	tests := []struct {
+		name           string
+		authHeader     string
+		xAPIKeyHeader  string
+		wantAuthHeader string
+	}{
+		{
+			name:           "x-api-key converted when no Authorization",
+			xAPIKeyHeader:  "sol_sk_live_test123",
+			wantAuthHeader: "Bearer sol_sk_live_test123",
+		},
+		{
+			name:           "Authorization takes precedence",
+			authHeader:     "Bearer sol_sk_live_original",
+			xAPIKeyHeader:  "sol_sk_live_other",
+			wantAuthHeader: "Bearer sol_sk_live_original",
+		},
+		{
+			name:           "no headers — no change",
+			wantAuthHeader: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotAuth string
+			handler := NormalizeAnthropicAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotAuth = r.Header.Get("Authorization")
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest("POST", "/v1/messages", nil)
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+			if tt.xAPIKeyHeader != "" {
+				req.Header.Set("x-api-key", tt.xAPIKeyHeader)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.wantAuthHeader, gotAuth)
+		})
+	}
+}
+
+func TestCheckModelAccess(t *testing.T) {
+	tests := []struct {
+		name          string
+		allowedModels []string
+		model         string
+		wantErr       bool
+	}{
+		{
+			name:          "no restrictions — all allowed",
+			allowedModels: nil,
+			model:         "llama3.2:8b",
+			wantErr:       false,
+		},
+		{
+			name:          "empty list — all allowed",
+			allowedModels: []string{},
+			model:         "llama3.2:8b",
+			wantErr:       false,
+		},
+		{
+			name:          "model in list — allowed",
+			allowedModels: []string{"llama3.2:8b", "mistral:7b"},
+			model:         "llama3.2:8b",
+			wantErr:       false,
+		},
+		{
+			name:          "model not in list — denied",
+			allowedModels: []string{"llama3.2:8b"},
+			model:         "mistral:7b",
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+
+			if tt.allowedModels != nil {
+				ctx := req.Context()
+				ctx = context.WithValue(ctx, keyContextKey, &KeyInfo{
+					ID:            "test-id",
+					AllowedModels: tt.allowedModels,
+				})
+				req = req.WithContext(ctx)
+			}
+
+			err := CheckModelAccess(req, tt.model)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestCheckModelAccessNoKeyInContext(t *testing.T) {
+	// No key in context — localhost access, should allow everything
+	req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	assert.NoError(t, CheckModelAccess(req, "any-model"))
+}
+
+func TestIsLocalhostWithXForwardedFor(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:8080"
+	req.Header.Set("X-Forwarded-For", "203.0.113.50")
+
+	// Should be treated as remote due to X-Forwarded-For
+	assert.False(t, isLocalhost(req))
+}
+
+func TestIsTunnelRequest(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    bool
+	}{
+		{
+			name:    "no tunnel headers",
+			headers: map[string]string{},
+			want:    false,
+		},
+		{
+			name:    "Cf-Connecting-Ip present",
+			headers: map[string]string{"Cf-Connecting-Ip": "203.0.113.50"},
+			want:    true,
+		},
+		{
+			name:    "Cf-Ray present",
+			headers: map[string]string{"Cf-Ray": "abc123"},
+			want:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			assert.Equal(t, tt.want, isTunnelRequest(req))
+		})
+	}
+}
+
+func TestTunnelAccessRestriction(t *testing.T) {
+	gw, store := testGateway(t)
+
+	tunnelFalse := false
+	key, err := store.CreateKeyWithOptions(storage.CreateKeyOptions{
+		Name:         "no-tunnel",
+		Scope:        "user",
+		TunnelAccess: &tunnelFalse,
+	})
+	require.NoError(t, err)
+
+	handler := gw.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Run("tunnel request rejected for no-tunnel key", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/models", nil)
+		req.Header.Set("Authorization", "Bearer "+key.Raw)
+		req.Header.Set("Cf-Connecting-Ip", "203.0.113.50")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("non-tunnel request allowed for no-tunnel key", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/models", nil)
+		req.Header.Set("Authorization", "Bearer "+key.Raw)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
 }
 
 // Ensure HOME isn't touched during tests

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -77,7 +77,7 @@ func (c *Client) Start(ctx context.Context) error {
 		c.mu.Unlock()
 
 		if err != nil {
-			log.Printf("relay: disconnected: %v — reconnecting in %s", err, backoff)
+			slog.Warn("relay disconnected, reconnecting", "error", err, "backoff", backoff.String())
 		}
 
 		select {
@@ -103,7 +103,7 @@ func (c *Client) Stop() {
 
 func (c *Client) connect(ctx context.Context) error {
 	url := fmt.Sprintf("wss://%s/api/connect/%s", c.relayHost, c.instanceID)
-	log.Printf("relay: connecting to %s", url)
+	slog.Info("relay connecting", "url", url)
 
 	conn, _, err := websocket.Dial(ctx, url, nil)
 	if err != nil {
@@ -134,7 +134,7 @@ func (c *Client) connect(ctx context.Context) error {
 		c.remoteURL = initOK.URL
 		c.connected = true
 		c.mu.Unlock()
-		log.Printf("relay: connected — remote URL: %s", initOK.URL)
+		slog.Info("relay connected", "remote_url", initOK.URL)
 	} else {
 		c.mu.Lock()
 		c.remoteURL = fmt.Sprintf("https://%s/%s", c.relayHost, c.instanceID)

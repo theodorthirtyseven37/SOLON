@@ -54,106 +54,172 @@ func (d *DB) Close() error {
 	return d.db.Close()
 }
 
+// SchemaVersion is the current schema version. Bump this when adding new migrations.
+const SchemaVersion = 5
+
 func (d *DB) migrate() error {
-	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS api_keys (
-			id          TEXT PRIMARY KEY,
-			name        TEXT NOT NULL,
-			prefix      TEXT NOT NULL,
-			hash        TEXT NOT NULL,
-			scope       TEXT DEFAULT 'user',
-			rate_limit  INTEGER DEFAULT 60,
-			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_used   DATETIME,
-			revoked     BOOLEAN DEFAULT FALSE
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix)`,
-		`CREATE TABLE IF NOT EXISTS requests (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			key_id      TEXT REFERENCES api_keys(id),
-			method      TEXT NOT NULL,
-			path        TEXT NOT NULL,
-			model       TEXT,
-			tokens_in   INTEGER,
-			tokens_out  INTEGER,
-			latency_ms  INTEGER,
-			status_code INTEGER,
-			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_requests_created ON requests(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_requests_key ON requests(key_id)`,
-		`CREATE TABLE IF NOT EXISTS models (
-			name         TEXT PRIMARY KEY,
-			size_bytes   INTEGER,
-			format       TEXT,
-			family       TEXT,
-			params       TEXT,
-			quantization TEXT,
-			pulled_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_used    DATETIME
-		)`,
-		`CREATE TABLE IF NOT EXISTS guardrail_events (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			request_id  TEXT NOT NULL,
-			key_id      TEXT,
-			model       TEXT,
-			stage       TEXT NOT NULL,
-			action      TEXT NOT NULL,
-			reason      TEXT,
-			score       REAL,
-			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_guardrail_events_request ON guardrail_events(request_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_guardrail_events_action ON guardrail_events(action)`,
+	// Create schema_version table first (must exist before anything else)
+	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (
+		version    INTEGER NOT NULL,
+		applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		comment    TEXT
+	)`); err != nil {
+		return fmt.Errorf("creating schema_version table: %w", err)
+	}
 
-		// V1.1 Milestone 1: Per-key tunnel access control
-		`ALTER TABLE api_keys ADD COLUMN tunnel_access BOOLEAN DEFAULT TRUE`,
+	currentVersion := d.currentSchemaVersion()
 
-		// V1.1 Milestone 2: Key expiry and model restrictions
-		`ALTER TABLE api_keys ADD COLUMN expires_at DATETIME`,
-		`ALTER TABLE api_keys ADD COLUMN allowed_models TEXT`, // JSON array, null = all models
+	// Versioned migrations: index is the version number (1-based)
+	type migration struct {
+		version int
+		comment string
+		sql     []string
+	}
 
-		// V1.2: External API providers
-		`CREATE TABLE IF NOT EXISTS providers (
-			id         TEXT PRIMARY KEY,
-			name       TEXT NOT NULL UNIQUE,
-			base_url   TEXT NOT NULL,
-			api_key    TEXT NOT NULL,
-			enabled    BOOLEAN DEFAULT TRUE,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`ALTER TABLE requests ADD COLUMN provider TEXT`,
-
-		// V1.3: Sandbox management
-		`CREATE TABLE IF NOT EXISTS sandboxes (
-			id           TEXT PRIMARY KEY,
-			name         TEXT NOT NULL UNIQUE,
-			container_id TEXT,
-			status       TEXT NOT NULL DEFAULT 'created',
-			policy       TEXT NOT NULL DEFAULT 'api-only',
-			api_key_id   TEXT,
-			config       TEXT,
-			created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-			started_at   DATETIME,
-			stopped_at   DATETIME
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_sandboxes_name ON sandboxes(name)`,
-
-		// V1.4: Tiered sandbox security
-		`ALTER TABLE sandboxes ADD COLUMN tier INTEGER DEFAULT 2`,
+	migrations := []migration{
+		{
+			version: 1,
+			comment: "initial schema: api_keys, requests, models, guardrail_events",
+			sql: []string{
+				`CREATE TABLE IF NOT EXISTS api_keys (
+					id          TEXT PRIMARY KEY,
+					name        TEXT NOT NULL,
+					prefix      TEXT NOT NULL,
+					hash        TEXT NOT NULL,
+					scope       TEXT DEFAULT 'user',
+					rate_limit  INTEGER DEFAULT 60,
+					created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+					last_used   DATETIME,
+					revoked     BOOLEAN DEFAULT FALSE
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix)`,
+				`CREATE TABLE IF NOT EXISTS requests (
+					id          INTEGER PRIMARY KEY AUTOINCREMENT,
+					key_id      TEXT REFERENCES api_keys(id),
+					method      TEXT NOT NULL,
+					path        TEXT NOT NULL,
+					model       TEXT,
+					tokens_in   INTEGER,
+					tokens_out  INTEGER,
+					latency_ms  INTEGER,
+					status_code INTEGER,
+					created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_requests_created ON requests(created_at)`,
+				`CREATE INDEX IF NOT EXISTS idx_requests_key ON requests(key_id)`,
+				`CREATE TABLE IF NOT EXISTS models (
+					name         TEXT PRIMARY KEY,
+					size_bytes   INTEGER,
+					format       TEXT,
+					family       TEXT,
+					params       TEXT,
+					quantization TEXT,
+					pulled_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+					last_used    DATETIME
+				)`,
+				`CREATE TABLE IF NOT EXISTS guardrail_events (
+					id          INTEGER PRIMARY KEY AUTOINCREMENT,
+					request_id  TEXT NOT NULL,
+					key_id      TEXT,
+					model       TEXT,
+					stage       TEXT NOT NULL,
+					action      TEXT NOT NULL,
+					reason      TEXT,
+					score       REAL,
+					created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_guardrail_events_request ON guardrail_events(request_id)`,
+				`CREATE INDEX IF NOT EXISTS idx_guardrail_events_action ON guardrail_events(action)`,
+			},
+		},
+		{
+			version: 2,
+			comment: "per-key tunnel access control",
+			sql: []string{
+				`ALTER TABLE api_keys ADD COLUMN tunnel_access BOOLEAN DEFAULT TRUE`,
+			},
+		},
+		{
+			version: 3,
+			comment: "key expiry and model restrictions",
+			sql: []string{
+				`ALTER TABLE api_keys ADD COLUMN expires_at DATETIME`,
+				`ALTER TABLE api_keys ADD COLUMN allowed_models TEXT`,
+			},
+		},
+		{
+			version: 4,
+			comment: "external API providers + request provider tracking",
+			sql: []string{
+				`CREATE TABLE IF NOT EXISTS providers (
+					id         TEXT PRIMARY KEY,
+					name       TEXT NOT NULL UNIQUE,
+					base_url   TEXT NOT NULL,
+					api_key    TEXT NOT NULL,
+					enabled    BOOLEAN DEFAULT TRUE,
+					created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+				)`,
+				`ALTER TABLE requests ADD COLUMN provider TEXT`,
+			},
+		},
+		{
+			version: 5,
+			comment: "sandbox management with tiered security",
+			sql: []string{
+				`CREATE TABLE IF NOT EXISTS sandboxes (
+					id           TEXT PRIMARY KEY,
+					name         TEXT NOT NULL UNIQUE,
+					container_id TEXT,
+					status       TEXT NOT NULL DEFAULT 'created',
+					policy       TEXT NOT NULL DEFAULT 'api-only',
+					api_key_id   TEXT,
+					config       TEXT,
+					created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+					started_at   DATETIME,
+					stopped_at   DATETIME
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_sandboxes_name ON sandboxes(name)`,
+				`ALTER TABLE sandboxes ADD COLUMN tier INTEGER DEFAULT 2`,
+			},
+		},
 	}
 
 	for _, m := range migrations {
-		if _, err := d.db.Exec(m); err != nil {
-			// ALTER TABLE ADD COLUMN fails if column already exists — safe to ignore
-			if isAlterTableDuplicate(m, err) {
-				continue
+		if m.version <= currentVersion {
+			continue
+		}
+		for _, stmt := range m.sql {
+			if _, err := d.db.Exec(stmt); err != nil {
+				if isAlterTableDuplicate(stmt, err) {
+					continue
+				}
+				return fmt.Errorf("migration v%d failed: %w", m.version, err)
 			}
-			return fmt.Errorf("migration failed: %w", err)
+		}
+		if _, err := d.db.Exec(
+			`INSERT INTO schema_version (version, comment) VALUES (?, ?)`,
+			m.version, m.comment,
+		); err != nil {
+			return fmt.Errorf("recording migration v%d: %w", m.version, err)
 		}
 	}
 
 	return nil
+}
+
+// currentSchemaVersion returns the highest applied schema version, or 0 if none.
+func (d *DB) currentSchemaVersion() int {
+	var version int
+	err := d.db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&version)
+	if err != nil {
+		return 0
+	}
+	return version
+}
+
+// GetSchemaVersion returns the current schema version and migration history.
+func (d *DB) GetSchemaVersion() (int, error) {
+	return d.currentSchemaVersion(), nil
 }
 
 // isAlterTableDuplicate returns true if the error is from adding a column that already exists.
