@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	osexec "os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -79,15 +80,20 @@ func serveCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("creating initial admin key: %w", err)
 				}
+
+				// Write admin key to file with restrictive permissions (owner-only read/write)
+				home, _ := os.UserHomeDir()
+				keyPath := filepath.Join(home, ".solon", "admin-key")
+				if err := os.WriteFile(keyPath, []byte(key.Raw+"\n"), 0600); err != nil {
+					return fmt.Errorf("writing admin key to %s: %w", keyPath, err)
+				}
+
 				fmt.Println()
-				fmt.Println("  First run detected — admin API key created:")
-				fmt.Println()
-				fmt.Printf("  %s\n", key.Raw)
-				fmt.Println()
-				fmt.Println("  Save this key — it won't be shown again.")
+				fmt.Println("  First run detected — admin API key created.")
+				fmt.Printf("  Key saved to: %s (permissions: 0600)\n", keyPath)
 				fmt.Println()
 				fmt.Println("  Test it with:")
-				fmt.Printf("  curl http://localhost:%d/v1/models -H \"Authorization: Bearer %s\"\n", port, key.Raw)
+				fmt.Printf("  curl http://localhost:%d/v1/models -H \"Authorization: Bearer $(cat %s)\"\n", port, keyPath)
 				fmt.Println()
 				fmt.Println("  Get started by pulling a model:")
 				fmt.Println("  solon models pull llama3.2:3b")
