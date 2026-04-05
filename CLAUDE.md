@@ -80,6 +80,13 @@ make dev                # Build + run in dev mode
 1. Add migration in `internal/storage/db.go`
 2. Increment schema version
 
+## Git Workflow (Mandatory)
+
+- **Never push directly to master.** All changes go through feature branches and pull requests.
+- Branch naming: `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `test/` prefixes matching conventional commits.
+- PRs must have a clear summary and test plan before merge.
+- Master auto-deploys — treat it as production.
+
 ## Architecture Rules
 
 1. **Gateway is the only TCP listener** — inference engine uses Unix socket only
