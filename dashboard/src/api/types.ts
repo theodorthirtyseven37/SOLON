@@ -267,6 +267,18 @@ export interface CloudAPIToken {
   last_used?: string
 }
 
+// Telegram integration types
+
+export interface TelegramIntegration {
+  id: string
+  sandbox_id: string
+  bot_username?: string
+  status: 'connected' | 'disconnected' | 'error'
+  error_msg?: string
+  created_at: string
+  updated_at: string
+}
+
 // Download/pull types
 
 export interface DownloadProgress {

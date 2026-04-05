@@ -150,6 +150,19 @@ func (d *DB) migrate() error {
 
 		// V1.4: Tiered sandbox security
 		`ALTER TABLE sandboxes ADD COLUMN tier INTEGER DEFAULT 2`,
+
+		// V1.5: Telegram bot integrations
+		`CREATE TABLE IF NOT EXISTS telegram_integrations (
+			id          TEXT PRIMARY KEY,
+			sandbox_id  TEXT NOT NULL REFERENCES sandboxes(id) ON DELETE CASCADE,
+			bot_token   TEXT NOT NULL,
+			bot_username TEXT,
+			status      TEXT NOT NULL DEFAULT 'disconnected',
+			error_msg   TEXT,
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_telegram_sandbox ON telegram_integrations(sandbox_id)`,
 	}
 
 	for _, m := range migrations {

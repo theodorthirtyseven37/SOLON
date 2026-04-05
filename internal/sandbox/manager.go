@@ -727,6 +727,26 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 	return status, nil
 }
 
+// ContainerIP returns the IP address of a running sandbox's container on its network.
+func (m *Manager) ContainerIP(ctx context.Context, sandboxID string) (string, error) {
+	sb, err := m.store.GetSandbox(sandboxID)
+	if err != nil {
+		return "", fmt.Errorf("sandbox not found: %w", err)
+	}
+	if sb.ContainerID == "" {
+		return "", fmt.Errorf("sandbox %s has no container", sandboxID)
+	}
+
+	// Try tier-2 network first (most sandboxes), fall back to legacy bridge
+	for _, net := range []string{NetworkTier2, NetworkTier1, NetworkName} {
+		ip, err := m.docker.containerInspectNetwork(ctx, sb.ContainerID, net)
+		if err == nil && ip != "" {
+			return ip, nil
+		}
+	}
+	return "", fmt.Errorf("sandbox %s: no network IP found", sandboxID)
+}
+
 // OpenClawContainerIP returns the IP address of the running OpenClaw gateway container
 // on the solon-bridge network. Returns empty string and error if not found.
 func (m *Manager) OpenClawContainerIP(ctx context.Context) (string, error) {

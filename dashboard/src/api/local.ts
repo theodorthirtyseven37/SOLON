@@ -1,5 +1,5 @@
 import { fetchJSON } from './client'
-import type { InstanceAPI, HealthStatus, SystemInfo, ModelInfo, APIKey, RequestLogEntry, UsageStats, KeyUsage, TunnelStatus, RemoteStatus, CatalogModel, DownloadProgress, CreateKeyOptions, ProviderConfig, SandboxInfo, SandboxPreset, SandboxStats, SandboxTier } from './types'
+import type { InstanceAPI, HealthStatus, SystemInfo, ModelInfo, APIKey, RequestLogEntry, UsageStats, KeyUsage, TunnelStatus, RemoteStatus, CatalogModel, DownloadProgress, CreateKeyOptions, ProviderConfig, SandboxInfo, SandboxPreset, SandboxStats, SandboxTier, TelegramIntegration } from './types'
 
 // Local instance API — same-origin calls, no auth headers needed
 // Go's LocalhostOrAuth middleware handles authentication for localhost
@@ -97,6 +97,26 @@ export const sandboxAPI = {
 
   stats: (id: string) =>
     fetchJSON<SandboxStats>(`/api/v1/sandboxes/${id}/stats`),
+
+  telegram: {
+    get: (id: string) =>
+      fetchJSON<{ integration: TelegramIntegration | null }>(`/api/v1/sandboxes/${id}/integrations/telegram`).then(r => r.integration),
+
+    create: (id: string, botToken: string) =>
+      fetchJSON<{ integration: TelegramIntegration }>(`/api/v1/sandboxes/${id}/integrations/telegram`, {
+        method: 'POST',
+        body: JSON.stringify({ bot_token: botToken }),
+      }).then(r => r.integration),
+
+    remove: (id: string) =>
+      fetchJSON<{ status: string }>(`/api/v1/sandboxes/${id}/integrations/telegram`, { method: 'DELETE' }),
+
+    connect: (id: string) =>
+      fetchJSON<{ status: string }>(`/api/v1/sandboxes/${id}/integrations/telegram/connect`, { method: 'POST' }),
+
+    disconnect: (id: string) =>
+      fetchJSON<{ status: string }>(`/api/v1/sandboxes/${id}/integrations/telegram/disconnect`, { method: 'POST' }),
+  },
 }
 
 export interface PullModelCallbacks {

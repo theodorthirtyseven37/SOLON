@@ -18,6 +18,7 @@ import (
 	"github.com/openclaw/solon/internal/models"
 	"github.com/openclaw/solon/internal/sandbox"
 	"github.com/openclaw/solon/internal/storage"
+	"github.com/openclaw/solon/internal/telegram"
 	"github.com/openclaw/solon/internal/tunnel"
 )
 
@@ -49,6 +50,7 @@ type Gateway struct {
 	tunnel     tunnel.Tunnel
 	relay      RemoteAccess
 	sandboxes  *sandbox.Manager
+	telegram   *telegram.Bridge
 	port       int
 	version    string
 	guardrails *guardrails.Config
@@ -80,6 +82,11 @@ func New(cfg Config) (*Gateway, error) {
 		guardrails: grCfg,
 		policies:   cfg.Policies,
 		shield:     shield,
+	}
+
+	// Initialize Telegram bridge if sandboxes are available
+	if cfg.Sandboxes != nil && cfg.Store != nil {
+		g.telegram = telegram.New(cfg.Sandboxes.ContainerIP, cfg.Store)
 	}
 
 	g.setupRoutes()
@@ -172,6 +179,13 @@ func (g *Gateway) setupRoutes() {
 		r.Post("/api/v1/openclaw/start", g.handleOpenClawStart)
 		r.Get("/api/v1/openclaw/status", g.handleOpenClawStatus)
 		r.Post("/api/v1/openclaw/send", g.handleOpenClawSend)
+
+		// Telegram bot integration
+		r.Get("/api/v1/sandboxes/{id}/integrations/telegram", g.handleGetTelegramIntegration)
+		r.Post("/api/v1/sandboxes/{id}/integrations/telegram", g.handleCreateTelegramIntegration)
+		r.Delete("/api/v1/sandboxes/{id}/integrations/telegram", g.handleDeleteTelegramIntegration)
+		r.Post("/api/v1/sandboxes/{id}/integrations/telegram/connect", g.handleConnectTelegram)
+		r.Post("/api/v1/sandboxes/{id}/integrations/telegram/disconnect", g.handleDisconnectTelegram)
 	})
 
 	// OpenClaw WebSocket proxy (separate group for query param auth support)
@@ -193,8 +207,36 @@ func (g *Gateway) SetRelay(r RemoteAccess) {
 
 // ListenAndServe starts the HTTP server.
 func (g *Gateway) ListenAndServe() error {
+	// Reconnect any previously-connected Telegram bots
+	if g.telegram != nil && g.store != nil {
+		go g.reconnectTelegramBots()
+	}
+
 	addr := fmt.Sprintf(":%d", g.port)
 	return http.ListenAndServe(addr, g.router)
+}
+
+// Shutdown gracefully shuts down gateway resources.
+func (g *Gateway) Shutdown() {
+	if g.telegram != nil {
+		g.telegram.Shutdown()
+	}
+}
+
+// reconnectTelegramBots reconnects bots that were connected before a restart.
+func (g *Gateway) reconnectTelegramBots() {
+	integrations, err := g.store.ListTelegramIntegrations()
+	if err != nil {
+		log.Printf("[telegram] failed to list integrations for reconnect: %v", err)
+		return
+	}
+	for _, ti := range integrations {
+		if ti.Status == "connected" || ti.Status == "error" {
+			if err := g.telegram.Connect(ti.SandboxID); err != nil {
+				log.Printf("[telegram] reconnect failed for sandbox %s: %v", ti.SandboxID, err)
+			}
+		}
+	}
 }
 
 // --- Inference handlers ---

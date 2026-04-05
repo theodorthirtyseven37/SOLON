@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { SandboxInfo, SandboxStats, SandboxTier } from '../../api/types'
+import type { SandboxInfo, SandboxStats, SandboxTier, TelegramIntegration } from '../../api/types'
 import { sandboxAPI } from '../../api/local'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -32,9 +32,16 @@ export default function Sandboxes() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [stats, setStats] = useState<Record<string, SandboxStats>>({})
+  const [telegramState, setTelegramState] = useState<Record<string, TelegramIntegration | null>>({})
+  const [telegramToken, setTelegramToken] = useState('')
+  const [telegramLoading, setTelegramLoading] = useState<string | null>(null)
 
   const refreshStats = useCallback((id: string) => {
     sandboxAPI.stats(id).then(s => setStats(prev => ({ ...prev, [id]: s }))).catch(() => {})
+  }, [])
+
+  const loadTelegram = useCallback((id: string) => {
+    sandboxAPI.telegram.get(id).then(ti => setTelegramState(prev => ({ ...prev, [id]: ti }))).catch(() => {})
   }, [])
 
   const load = () => {
@@ -134,6 +141,7 @@ export default function Sandboxes() {
                       } else {
                         setExpandedId(sb.id)
                         if (sb.status === 'running') refreshStats(sb.id)
+                        loadTelegram(sb.id)
                       }
                     }}
                   >
@@ -218,6 +226,66 @@ export default function Sandboxes() {
                 {isExpanded && sb.status !== 'running' && (
                   <div className="mt-4 pt-4 border-t border-[var(--border)]">
                     <p className="text-xs text-[var(--text-tertiary)]">Start the sandbox to see resource usage.</p>
+                  </div>
+                )}
+
+                {/* Telegram integration */}
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                    <p className="text-xs font-medium text-[var(--text-secondary)] mb-3">Integrations</p>
+                    <TelegramSection
+                      sandboxId={sb.id}
+                      sandboxStatus={sb.status}
+                      integration={telegramState[sb.id] ?? undefined}
+                      token={expandedId === sb.id ? telegramToken : ''}
+                      onTokenChange={setTelegramToken}
+                      loading={telegramLoading === sb.id}
+                      onSave={async (botToken) => {
+                        setTelegramLoading(sb.id)
+                        try {
+                          const ti = await sandboxAPI.telegram.create(sb.id, botToken)
+                          setTelegramState(prev => ({ ...prev, [sb.id]: ti }))
+                          setTelegramToken('')
+                        } catch (e) {
+                          setError((e as Error).message)
+                        } finally {
+                          setTelegramLoading(null)
+                        }
+                      }}
+                      onConnect={async () => {
+                        setTelegramLoading(sb.id)
+                        try {
+                          await sandboxAPI.telegram.connect(sb.id)
+                          loadTelegram(sb.id)
+                        } catch (e) {
+                          setError((e as Error).message)
+                        } finally {
+                          setTelegramLoading(null)
+                        }
+                      }}
+                      onDisconnect={async () => {
+                        setTelegramLoading(sb.id)
+                        try {
+                          await sandboxAPI.telegram.disconnect(sb.id)
+                          loadTelegram(sb.id)
+                        } catch (e) {
+                          setError((e as Error).message)
+                        } finally {
+                          setTelegramLoading(null)
+                        }
+                      }}
+                      onRemove={async () => {
+                        setTelegramLoading(sb.id)
+                        try {
+                          await sandboxAPI.telegram.remove(sb.id)
+                          setTelegramState(prev => ({ ...prev, [sb.id]: null }))
+                        } catch (e) {
+                          setError((e as Error).message)
+                        } finally {
+                          setTelegramLoading(null)
+                        }
+                      }}
+                    />
                   </div>
                 )}
               </div>
@@ -360,6 +428,107 @@ function MiniStat({ label, value, sub }: { label: string; value: string; sub?: s
       <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">{label}</p>
       <p className="text-sm font-semibold text-[var(--text)] mt-0.5">{value}</p>
       {sub && <p className="text-[10px] text-[var(--text-tertiary)]">{sub}</p>}
+    </div>
+  )
+}
+
+const TG_STATUS_COLORS: Record<string, string> = {
+  connected: 'text-green-400',
+  disconnected: 'text-gray-400',
+  error: 'text-red-400',
+}
+
+function TelegramSection({
+  sandboxId: _sandboxId,
+  sandboxStatus,
+  integration,
+  token,
+  onTokenChange,
+  loading,
+  onSave,
+  onConnect,
+  onDisconnect,
+  onRemove,
+}: {
+  sandboxId: string
+  sandboxStatus: string
+  integration?: TelegramIntegration
+  token: string
+  onTokenChange: (t: string) => void
+  loading: boolean
+  onSave: (botToken: string) => void
+  onConnect: () => void
+  onDisconnect: () => void
+  onRemove: () => void
+}) {
+  if (integration) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg bg-[var(--bg)] border border-[var(--border)] p-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-[var(--text)]">Telegram</span>
+            {integration.bot_username && (
+              <span className="text-xs text-[var(--text-tertiary)]">@{integration.bot_username}</span>
+            )}
+            <span className={`text-xs font-medium ${TG_STATUS_COLORS[integration.status] || 'text-gray-400'}`}>
+              {integration.status}
+            </span>
+          </div>
+          {integration.error_msg && (
+            <p className="text-xs text-red-400 mt-1 truncate">{integration.error_msg}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {integration.status === 'connected' ? (
+            <button
+              onClick={onDisconnect}
+              disabled={loading}
+              className="px-2.5 py-1 rounded text-xs font-medium bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors disabled:opacity-50"
+            >
+              Disconnect
+            </button>
+          ) : sandboxStatus === 'running' ? (
+            <button
+              onClick={onConnect}
+              disabled={loading}
+              className="px-2.5 py-1 rounded text-xs font-medium bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
+            >
+              Connect
+            </button>
+          ) : null}
+          <button
+            onClick={onRemove}
+            disabled={loading}
+            className="px-2.5 py-1 rounded text-xs text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg bg-[var(--bg)] border border-[var(--border)] p-3">
+      <p className="text-xs text-[var(--text-secondary)] mb-2">
+        Connect a Telegram bot to chat with this sandbox agent.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={token}
+          onChange={e => onTokenChange(e.target.value)}
+          placeholder="Paste bot token from @BotFather"
+          className="flex-1 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] text-xs font-mono"
+        />
+        <button
+          onClick={() => onSave(token)}
+          disabled={loading || !token.trim()}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {loading ? 'Saving...' : 'Connect'}
+        </button>
+      </div>
     </div>
   )
 }

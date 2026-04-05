@@ -6,20 +6,20 @@ class Solon < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/theodorthirtyseven37/SOLON/releases/download/v#{version}/solon-darwin-arm64"
+      url "https://github.com/getsolon/SOLON/releases/download/v#{version}/solon-darwin-arm64"
       sha256 "PLACEHOLDER" # Updated by CI
     else
-      url "https://github.com/theodorthirtyseven37/SOLON/releases/download/v#{version}/solon-darwin-amd64"
+      url "https://github.com/getsolon/SOLON/releases/download/v#{version}/solon-darwin-amd64"
       sha256 "PLACEHOLDER" # Updated by CI
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/theodorthirtyseven37/SOLON/releases/download/v#{version}/solon-linux-arm64"
+      url "https://github.com/getsolon/SOLON/releases/download/v#{version}/solon-linux-arm64"
       sha256 "PLACEHOLDER" # Updated by CI
     else
-      url "https://github.com/theodorthirtyseven37/SOLON/releases/download/v#{version}/solon-linux-amd64"
+      url "https://github.com/getsolon/SOLON/releases/download/v#{version}/solon-linux-amd64"
       sha256 "PLACEHOLDER" # Updated by CI
     end
   end
