@@ -25,22 +25,21 @@ Solon already supports local model inference (llama.cpp backend). The managed ho
 
 ### What Needs Work
 
-#### P0 — GPU Tier Support
+#### P0 — GPU Tier Support ✅ DONE
 
-1. **GPU server provisioning**
-   - Provisioner currently maps: starter→cx22, pro→cx42, gpu→gx11
-   - Need: expand GPU tiers to match Hetzner's actual GPU offerings
-   - Hetzner GPUs: GEX44 (RTX 4000 SFF, 20GB), GEX66 (RTX 5000, 32GB), GEX88 (2x RTX 5000, 64GB)
-   - For larger GPUs (A100, H100): need DataCrunch or Lambda Labs API integration
-   - Files: `provisioner/src/types.ts`, `provisioner/src/cloud-init.ts`
+1. **Multi-provider GPU provisioning** ✅
+   - `CloudProvider` interface: Hetzner, Verda (Finland), Scaleway (France)
+   - Provider-agnostic GPU tier system (7 tiers across 3 providers)
+   - Legacy tier backwards compatibility maintained
+   - Files: `provisioner/src/providers/` (types, hetzner, verda, scaleway, index)
 
-2. **NVIDIA driver installation via cloud-init**
-   - Current cloud-init script installs Docker + Solon but no GPU drivers
-   - Need: NVIDIA Container Toolkit, CUDA drivers
-   - Ansible role exists (`infra/ansible/roles/gpu-inference/`) — port to cloud-init
+2. **Multi-vendor GPU driver installation via cloud-init** ✅
+   - AMD ROCm for MI300X/MI250 (the default path for AMD GPUs)
+   - NVIDIA CUDA 12.4 + Container Toolkit (fallback, user-chosen)
+   - Intel oneAPI + Habana for Gaudi2/Gaudi3
    - File: `provisioner/src/cloud-init.ts`
 
-3. **Model pre-loading**
+3. **Model pre-loading** (TODO)
    - When customer selects a GPU tier, pre-load the right model
    - E.g., GPU L4 (24GB) → auto-pull Llama 3.1 70B Q4
    - Need: tier-to-model mapping, pull on first boot
@@ -142,29 +141,37 @@ Stripe Checkout (cloud API)
             → Dashboard shows "Running" with connect button
 ```
 
-### GPU Server Tiers (Hetzner)
+### GPU Server Tiers (Multi-Provider, Europe)
 
-| Tier | Server | GPU | VRAM | Models That Fit | Price |
-|------|--------|-----|------|----------------|-------|
-| GPU Starter | GEX44 | RTX 4000 SFF | 20 GB | 7-14B params | ~$275/mo cost |
-| GPU Pro | GEX66 | RTX 5000 Ada | 32 GB | Up to 70B Q4 | ~$440/mo cost |
-| GPU Max | GEX88 | 2x RTX 5000 | 64 GB | 70B FP16 | ~$825/mo cost |
+| Tier ID | Provider | GPU | VRAM | Models That Fit | Price |
+|---------|----------|-----|------|----------------|-------|
+| `hetzner-rtx4000` | Hetzner (DE) | RTX 4000 SFF | 20 GB | 7-14B | ~$200/mo |
+| `scaleway-l4` | Scaleway (FR) | NVIDIA L4 | 24 GB | 7-14B | $0.75/hr |
+| `scaleway-l40s` | Scaleway (FR) | NVIDIA L40S | 48 GB | Up to 70B Q4 | $1.40/hr |
+| `verda-a100-80` | Verda (FI) | A100 80GB | 80 GB | 70B FP16 | $1.89/hr |
+| `scaleway-h100` | Scaleway (FR) | H100 | 80 GB | 70B+ | $2.73/hr |
+| `verda-h100` | Verda (FI) | H100 | 80 GB | 70B+ | $2.29/hr |
+| `verda-h200` | Verda (FI) | H200 | 141 GB | 70B+ FP16 | $3.29/hr |
 
-For larger models (Kimi K2.5, Llama 405B): need 4x A100 — beyond Hetzner, requires DataCrunch/Lambda.
+GPU vendors supported: **NVIDIA** (CUDA), **AMD** (ROCm — MI300X, MI250), **Intel** (Gaudi2/3).
+NVIDIA is a fallback the user can choose — not the assumed default.
 
 ## Key Files for GPU Work
 
 ```
-provisioner/src/cloud-init.ts          — Server bootstrap script (add NVIDIA drivers)
-provisioner/src/types.ts               — Tier-to-server mapping (add GPU tiers)
-provisioner/src/index.ts               — Provisioner webhook handler
+provisioner/src/providers/types.ts     — CloudProvider interface, GPU_SPECS, GPU_TIERS, regions
+provisioner/src/providers/hetzner.ts   — Hetzner provider implementation
+provisioner/src/providers/verda.ts     — Verda (ex-DataCrunch, Finland) provider
+provisioner/src/providers/scaleway.ts  — Scaleway (France/Poland) provider
+provisioner/src/providers/index.ts     — Provider registry + resolveProvider()
+provisioner/src/cloud-init.ts          — GPU-aware bootstrap (NVIDIA/AMD/Intel driver blocks)
+provisioner/src/types.ts               — Env, ProvisionRequest (now with gpu_tier field)
+provisioner/src/index.ts               — Multi-provider webhook handler + GET /api/tiers
+cloud/src/lib/stripe.ts                — GPU_TIER_PRICING for Stripe checkout
 internal/inference/engine.go           — Backend selection, memory budgeting
 internal/inference/backends/            — Add vllm.go here
 internal/models/catalog.json           — Model definitions (add GPU-optimized entries)
-infra/ansible/roles/gpu-inference/     — Existing Ansible role for GPU setup (reference)
-website/src/pages/pricing.astro        — GPU pricing display
-dashboard/src/pages/cloud/Billing.tsx  — GPU tier checkout UI
-cloud/src/lib/stripe.ts                — Stripe price IDs for GPU tiers
+infra/ansible/roles/gpu-inference/     — Legacy Ansible role for GPU setup (reference)
 ```
 
 ## Build & Test

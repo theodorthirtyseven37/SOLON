@@ -2,7 +2,71 @@
 
 const STRIPE_API = 'https://api.stripe.com/v1'
 
-// Managed hosting tier pricing
+// GPU tier pricing — maps gpu_tier IDs to Stripe checkout config.
+// Monthly tiers use fixed subscription pricing. Hourly tiers use metered billing.
+export const GPU_TIER_PRICING: Record<string, {
+  name: string
+  description: string
+  /** Price in cents. For monthly: total/mo. For hourly: per-hour rate. */
+  price: number
+  billingModel: 'monthly' | 'hourly'
+  provider: string
+}> = {
+  // Hetzner — monthly billing, budget entry
+  'hetzner-rtx4000': {
+    name: 'GPU Starter — RTX 4000 SFF (20 GB)',
+    description: 'Hetzner, Falkenstein DE. Good for 7-14B models.',
+    price: 20000, // ~$200/mo
+    billingModel: 'monthly',
+    provider: 'hetzner',
+  },
+  // Scaleway — hourly billing
+  'scaleway-l4': {
+    name: 'GPU L4 (24 GB)',
+    description: 'Scaleway, Paris FR. Good for 7-14B models.',
+    price: 75, // $0.75/hr
+    billingModel: 'hourly',
+    provider: 'scaleway',
+  },
+  'scaleway-l40s': {
+    name: 'GPU L40S (48 GB)',
+    description: 'Scaleway, Paris FR. Good for up to 70B Q4 models.',
+    price: 140, // $1.40/hr
+    billingModel: 'hourly',
+    provider: 'scaleway',
+  },
+  'scaleway-h100': {
+    name: 'GPU H100 (80 GB)',
+    description: 'Scaleway, Paris FR. High-end inference.',
+    price: 273, // $2.73/hr
+    billingModel: 'hourly',
+    provider: 'scaleway',
+  },
+  // Verda (ex-DataCrunch) — hourly billing, Finland
+  'verda-a100-80': {
+    name: 'GPU A100 80GB',
+    description: 'Verda, Helsinki FI. 100% renewable energy.',
+    price: 189, // $1.89/hr
+    billingModel: 'hourly',
+    provider: 'verda',
+  },
+  'verda-h100': {
+    name: 'GPU H100 (80 GB)',
+    description: 'Verda, Helsinki FI. 100% renewable energy.',
+    price: 229, // $2.29/hr
+    billingModel: 'hourly',
+    provider: 'verda',
+  },
+  'verda-h200': {
+    name: 'GPU H200 (141 GB)',
+    description: 'Verda, Helsinki FI. Largest single-GPU VRAM.',
+    price: 329, // $3.29/hr
+    billingModel: 'hourly',
+    provider: 'verda',
+  },
+}
+
+// Legacy tiers kept for backwards compatibility
 export const MANAGED_TIERS: Record<string, { name: string; price: number; serverType: string }> = {
   starter: { name: 'Starter', price: 2900, serverType: 'cx22' },
   pro: { name: 'Pro', price: 5900, serverType: 'cx42' },
@@ -44,13 +108,53 @@ export async function createCheckoutSession(
   params: {
     userId: string
     userEmail: string
-    tier: string
+    tier: string       // legacy tier OR gpu_tier ID
+    gpuTier?: string   // explicit gpu_tier ID (preferred)
     region: string
     instanceName: string
     successUrl: string
     cancelUrl: string
   },
 ): Promise<{ id: string; url: string }> {
+  // Prefer new gpu_tier, fall back to legacy tier
+  const gpuTierId = params.gpuTier
+  const gpuTierInfo = gpuTierId ? GPU_TIER_PRICING[gpuTierId] : undefined
+
+  if (gpuTierInfo) {
+    // New GPU tier checkout
+    const isMonthly = gpuTierInfo.billingModel === 'monthly'
+    const checkoutParams: Record<string, string> = {
+      'mode': 'subscription',
+      'success_url': params.successUrl,
+      'cancel_url': params.cancelUrl,
+      'customer_email': params.userEmail,
+      'line_items[0][price_data][currency]': 'usd',
+      'line_items[0][price_data][product_data][name]': `Solon GPU — ${gpuTierInfo.name}`,
+      'line_items[0][price_data][product_data][description]': gpuTierInfo.description,
+      'line_items[0][price_data][unit_amount]': String(gpuTierInfo.price),
+      'line_items[0][price_data][recurring][interval]': isMonthly ? 'month' : 'hour',
+      'line_items[0][quantity]': '1',
+      'metadata[user_id]': params.userId,
+      'metadata[gpu_tier]': gpuTierId!,
+      'metadata[provider]': gpuTierInfo.provider,
+      'metadata[region]': params.region,
+      'metadata[instance_name]': params.instanceName,
+      'subscription_data[metadata][user_id]': params.userId,
+      'subscription_data[metadata][gpu_tier]': gpuTierId!,
+      'subscription_data[metadata][provider]': gpuTierInfo.provider,
+    }
+
+    // Hourly billing uses metered usage reporting
+    if (!isMonthly) {
+      checkoutParams['line_items[0][price_data][recurring][interval]'] = 'month'
+      checkoutParams['line_items[0][price_data][recurring][usage_type]'] = 'metered'
+    }
+
+    const data = await stripeRequest('/checkout/sessions', secretKey, 'POST', checkoutParams) as { id: string; url: string }
+    return { id: data.id, url: data.url }
+  }
+
+  // Legacy tier fallback
   const tierInfo = MANAGED_TIERS[params.tier]
   if (!tierInfo) throw new Error(`Unknown tier: ${params.tier}`)
 

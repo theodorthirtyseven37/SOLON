@@ -1,25 +1,26 @@
 import type { Env } from './types'
+import type { GpuVendor } from './providers'
 
 /**
  * Generate a cloud-init user_data script that:
  * 1. Installs Docker
- * 2. Downloads and installs the Solon binary
- * 3. Configures and starts Solon as a systemd service
- * 4. Generates an admin API key
- * 5. Calls back to the cloud API with the server's IP and API key
- *
- * If any step fails, it calls back with status=failed.
+ * 2. Installs GPU drivers (NVIDIA CUDA, AMD ROCm, or Intel oneAPI — based on vendor)
+ * 3. Downloads and installs the Solon binary
+ * 4. Configures and starts Solon as a systemd service
+ * 5. Generates an admin API key
+ * 6. Calls back to the cloud API with the server's IP and API key
  */
 export function generateCloudInit(
   env: Env,
   opts: {
     instanceId: string
     tier: string
+    gpuVendor: GpuVendor
     callbackSecret: string
   },
 ): string {
   const callbackUrl = `${env.CLOUD_API_URL}/api/webhooks/provisioner`
-  const solon_github_repo = 'theodorthirtyseven37/SOLON'
+  const solonGithubRepo = 'theodorthirtyseven37/SOLON'
 
   return `#!/bin/bash
 set -euo pipefail
@@ -28,9 +29,10 @@ echo "[$(date)] Starting Solon provisioning for instance ${opts.instanceId}"
 
 INSTANCE_ID="${opts.instanceId}"
 TIER="${opts.tier}"
+GPU_VENDOR="${opts.gpuVendor}"
 CALLBACK_URL="${callbackUrl}"
 CALLBACK_SECRET="${opts.callbackSecret}"
-GITHUB_REPO="${solon_github_repo}"
+GITHUB_REPO="${solonGithubRepo}"
 
 # --- Callback helper ---
 send_callback() {
@@ -79,6 +81,9 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 apt-get update -qq
 apt-get install -yqq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
+
+# --- GPU driver installation (vendor-specific) ---
+${gpuDriverBlock(opts.gpuVendor)}
 
 # --- Basic hardening ---
 echo "[$(date)] Applying basic hardening"
@@ -145,6 +150,7 @@ cat > /etc/solon/managed.yaml <<MARKER
 managed: true
 provisioned_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 tier: "$TIER"
+gpu_vendor: "$GPU_VENDOR"
 instance_id: "$INSTANCE_ID"
 MARKER
 chown solon:solon /etc/solon/managed.yaml
@@ -235,5 +241,100 @@ echo "[$(date)] Provisioning complete. Sending callback."
 send_callback "running" "$PUBLIC_IP" "$API_KEY"
 
 echo "[$(date)] Provisioning finished successfully"
+`
+}
+
+/** Generate the GPU driver installation block based on vendor. */
+function gpuDriverBlock(vendor: GpuVendor): string {
+  switch (vendor) {
+    case 'amd':
+      return amdRocmBlock()
+    case 'intel':
+      return intelOneapiBlock()
+    case 'nvidia':
+      return nvidiaBlock()
+    default:
+      return `echo "[$(date)] No GPU driver installation needed (vendor: ${vendor})"`
+  }
+}
+
+/** AMD ROCm driver + container toolkit installation. */
+function amdRocmBlock(): string {
+  return `
+echo "[$(date)] Installing AMD ROCm drivers"
+# AMD ROCm — for MI300X, MI250, etc.
+apt-get install -yqq linux-headers-$(uname -r) build-essential
+
+# Add AMD ROCm repository
+wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor -o /etc/apt/keyrings/rocm.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/latest noble main" > /etc/apt/sources.list.d/rocm.list
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu noble main" > /etc/apt/sources.list.d/amdgpu.list
+
+apt-get update -qq
+apt-get install -yqq amdgpu-dkms rocm-dev rocm-libs
+
+# ROCm container support (Docker)
+apt-get install -yqq rocm-docker
+
+# Verify
+echo "[$(date)] ROCm installation complete"
+rocminfo || echo "[$(date)] WARNING: rocminfo not available yet (may need reboot)"
+
+# Add solon user to render and video groups for GPU access
+usermod -aG render solon 2>/dev/null || true
+usermod -aG video solon 2>/dev/null || true
+`
+}
+
+/** NVIDIA CUDA driver + container toolkit installation. */
+function nvidiaBlock(): string {
+  return `
+echo "[$(date)] Installing NVIDIA drivers and CUDA toolkit"
+apt-get install -yqq linux-headers-$(uname -r) build-essential dkms
+
+# NVIDIA driver (550 series)
+add-apt-repository -y ppa:graphics-drivers/ppa
+apt-get update -qq
+apt-get install -yqq nvidia-driver-550
+
+# CUDA toolkit
+wget -qO /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+dpkg -i /tmp/cuda-keyring.deb
+apt-get update -qq
+apt-get install -yqq cuda-toolkit-12-4
+
+# NVIDIA Container Toolkit (for Docker GPU passthrough)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \\
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+apt-get update -qq
+apt-get install -yqq nvidia-container-toolkit
+nvidia-ctk runtime configure --runtime=docker
+systemctl restart docker
+
+echo "[$(date)] NVIDIA driver installation complete"
+nvidia-smi || echo "[$(date)] WARNING: nvidia-smi not available yet (may need reboot)"
+`
+}
+
+/** Intel oneAPI / Gaudi driver installation. */
+function intelOneapiBlock(): string {
+  return `
+echo "[$(date)] Installing Intel Gaudi / oneAPI drivers"
+# Intel Gaudi drivers — for Gaudi2, Gaudi3
+wget -qO - https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor -o /usr/share/keyrings/intel-oneapi-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" > /etc/apt/sources.list.d/intel-oneapi.list
+
+apt-get update -qq
+apt-get install -yqq intel-basekit
+
+# Habana Labs runtime (for Gaudi accelerators)
+wget -qO - https://vault.habana.ai/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/habana.gpg
+echo "deb [signed-by=/etc/apt/keyrings/habana.gpg] https://vault.habana.ai/artifactory/debian noble main" > /etc/apt/sources.list.d/habana.list
+apt-get update -qq
+apt-get install -yqq habanalabs-firmware habanalabs-graph habanalabs-rdma-core habanalabs-thunk
+
+echo "[$(date)] Intel Gaudi driver installation complete"
+hl-smi || echo "[$(date)] WARNING: hl-smi not available yet (may need reboot)"
 `
 }
