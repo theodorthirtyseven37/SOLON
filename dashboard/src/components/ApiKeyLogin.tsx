@@ -18,7 +18,8 @@ export default function ApiKeyLogin({ onAuthenticated }: Props) {
     setError('')
 
     try {
-      const res = await fetch('/api/v1/health', {
+      // Validate against an auth-protected endpoint (health is public)
+      const res = await fetch('/api/v1/keys', {
         headers: { Authorization: `Bearer ${key.trim()}` },
       })
       if (res.ok) {
