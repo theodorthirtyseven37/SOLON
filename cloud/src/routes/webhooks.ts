@@ -171,6 +171,13 @@ webhooks.post('/provisioner', async (c) => {
   const sig = parts['v1']
   if (!timestamp || !sig) return c.json({ error: 'Invalid signature' }, 400)
 
+  // Reject signatures older than 5 minutes (prevent replay attacks)
+  const tsNum = parseInt(timestamp, 10)
+  const now = Math.floor(Date.now() / 1000)
+  if (Math.abs(now - tsNum) > 300) {
+    return c.json({ error: 'Signature timestamp expired' }, 401)
+  }
+
   const sigKey = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(c.env.PROVISIONER_SECRET),
@@ -195,7 +202,15 @@ webhooks.post('/provisioner', async (c) => {
     // Encrypt the Solon API key before storing
     let apiKeyEnc: string | null = null
     if (payload.solon_api_key) {
-      apiKeyEnc = await encrypt(payload.solon_api_key, c.env.ENCRYPTION_KEY)
+      try {
+        apiKeyEnc = await encrypt(payload.solon_api_key, c.env.ENCRYPTION_KEY)
+      } catch (err) {
+        console.error('Failed to encrypt API key:', err)
+        await c.env.DB.prepare(
+          `UPDATE managed_instances SET status = 'failed', updated_at = datetime('now') WHERE id = ?`,
+        ).bind(payload.instance_id).run()
+        return c.json({ error: 'Encryption failed' }, 500)
+      }
     }
 
     await c.env.DB.prepare(

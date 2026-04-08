@@ -43,10 +43,19 @@ app.post('/webhook/provision', async (c) => {
 async function handleCreate(env: Env, request: ProvisionRequest): Promise<void> {
   const tier = request.tier ?? 'starter'
   const region = request.region ?? 'eu-central'
-  const name = request.name ?? `solon-${request.instance_id.slice(0, 8)}`
+  const rawName = request.name ?? `solon-${request.instance_id.slice(0, 8)}`
+  // Sanitize name: only allow lowercase alphanumeric and hyphens
+  const name = rawName.replace(/[^a-z0-9-]/gi, '').slice(0, 63).toLowerCase()
 
-  const serverType = TIER_SERVER_TYPES[tier] ?? 'cx22'
-  const location = REGION_LOCATIONS[region] ?? 'fsn1'
+  if (!TIER_SERVER_TYPES[tier]) {
+    throw new Error(`Invalid tier: ${tier}`)
+  }
+  if (!REGION_LOCATIONS[region]) {
+    throw new Error(`Invalid region: ${region}`)
+  }
+
+  const serverType = TIER_SERVER_TYPES[tier]
+  const location = REGION_LOCATIONS[region]
 
   const userData = generateCloudInit(env, {
     instanceId: request.instance_id,
