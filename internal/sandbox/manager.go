@@ -642,16 +642,15 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 						"          'Connection': 'keep-alive',\n"+
 						"          'Access-Control-Allow-Origin': '*'\n"+
 						"        });\n"+
-						"        proc.stdout.on('data', d => {\n"+
-						"          const lines = d.toString().split('\\n').filter(l => l.trim());\n"+
-						"          for (const line of lines) {\n"+
-						"            res.write('data: ' + line + '\\n\\n');\n"+
-						"          }\n"+
-						"        });\n"+
+						"        let stdout = '';\n"+
+						"        proc.stdout.on('data', d => { stdout += d.toString(); });\n"+
 						"        proc.stderr.on('data', d => {\n"+
 						"          res.write('event: error\\ndata: ' + JSON.stringify({ error: d.toString() }) + '\\n\\n');\n"+
 						"        });\n"+
 						"        proc.on('close', code => {\n"+
+						"          if (stdout.trim()) {\n"+
+						"            res.write('data: ' + stdout.trim() + '\\n\\n');\n"+
+						"          }\n"+
 						"          res.write('event: done\\ndata: ' + JSON.stringify({ exit_code: code }) + '\\n\\n');\n"+
 						"          res.end();\n"+
 						"        });\n"+
