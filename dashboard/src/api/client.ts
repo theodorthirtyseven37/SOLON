@@ -1,7 +1,26 @@
 import { isDesktopApp } from '../lib/mode'
 
 const CLOUD_TOKEN_KEY = 'solon-cloud-token'
+const LOCAL_API_KEY = 'solon-local-api-key'
 const CLOUD_API_BASE = 'https://api.getsolon.dev'
+
+// Local API key management (for accessing Solon behind reverse proxy)
+export function getLocalApiKey(): string | null {
+  return localStorage.getItem(LOCAL_API_KEY)
+}
+
+export function setLocalApiKey(key: string) {
+  localStorage.setItem(LOCAL_API_KEY, key)
+}
+
+export function clearLocalApiKey() {
+  localStorage.removeItem(LOCAL_API_KEY)
+}
+
+export function isNonLocalhost(): boolean {
+  const host = window.location.hostname
+  return host !== 'localhost' && host !== '127.0.0.1' && host !== '[::1]'
+}
 
 function cloudApiUrl(path: string): string {
   if (isDesktopApp()) return `${CLOUD_API_BASE}/api${path}`
@@ -21,10 +40,12 @@ export function clearToken() {
 }
 
 export async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
+  const apiKey = isNonLocalhost() ? getLocalApiKey() : null
   const res = await fetch(url, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       ...opts?.headers,
     },
   })
