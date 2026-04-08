@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { fetchJSON } from '../../api/client'
+import { fetchJSON, getLocalApiKey, isNonLocalhost } from '../../api/client'
 import type { ModelInfo } from '../../api/types'
+
+function authHeaders(): Record<string, string> {
+  const apiKey = isNonLocalhost() ? getLocalApiKey() : null
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+}
 
 interface ChatMessage {
   id: string
@@ -57,7 +62,7 @@ export default function Chat() {
     setStarting(true)
     setError('')
     try {
-      await fetch('/api/v1/openclaw/start', { method: 'POST' }).then(async r => {
+      await fetch('/api/v1/openclaw/start', { method: 'POST', headers: authHeaders() }).then(async r => {
         if (!r.ok) {
           const err = await r.json().catch(() => ({ error: r.statusText })) as { error?: string }
           throw new Error(err.error || `HTTP ${r.status}`)
@@ -96,7 +101,7 @@ export default function Chat() {
     try {
       const resp = await fetch('/api/v1/openclaw/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ message: text }),
       })
       if (!resp.ok) {
@@ -174,7 +179,7 @@ export default function Chat() {
 
       const response = await fetch('/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ model: selectedModel, messages: allMsgs, stream: true }),
       })
       if (!response.ok) {
