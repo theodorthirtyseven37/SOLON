@@ -610,6 +610,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 			"Env": []string{
 				fmt.Sprintf("ANTHROPIC_API_KEY=%s", providerKey),
 				"OPENCLAW_GATEWAY_TOKEN=solon-openclaw-token",
+				"OPENCLAW_MODEL=anthropic/claude-sonnet-4-6",
 				"OPENCLAW_NO_RESPAWN=1",
 				fmt.Sprintf("SOLON_ENDPOINT=http://%s:%d", solonHost, m.solonPort),
 				"NODE_ENV=production",
