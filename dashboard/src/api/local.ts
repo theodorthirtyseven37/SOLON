@@ -1,4 +1,4 @@
-import { fetchJSON } from './client'
+import { fetchJSON, getLocalApiKey, isNonLocalhost } from './client'
 import type { InstanceAPI, HealthStatus, SystemInfo, ModelInfo, APIKey, RequestLogEntry, UsageStats, KeyUsage, TunnelStatus, RemoteStatus, CatalogModel, DownloadProgress, CreateKeyOptions, ProviderConfig, SandboxInfo, SandboxPreset, SandboxStats, SandboxTier } from './types'
 
 // Local instance API — same-origin calls, no auth headers needed
@@ -113,9 +113,13 @@ export function pullModel(name: string, callbacks: PullModelCallbacks): AbortCon
 
   ;(async () => {
     try {
+      const apiKey = isNonLocalhost() ? getLocalApiKey() : null
       const res = await fetch('/api/v1/models/pull', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
         body: JSON.stringify({ name, stream: true }),
         signal: controller.signal,
       })

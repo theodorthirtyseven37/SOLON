@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { useTheme } from './hooks/useTheme'
 import { useModeStore } from './store/mode'
 import { localAPI } from './api/local'
 import { cloudAPI } from './api/cloud'
+import { getLocalApiKey, isNonLocalhost } from './api/client'
 import { InstanceProvider } from './contexts/InstanceContext'
 import AuthLayout from './layouts/AuthLayout'
 import AppLayout from './layouts/AppLayout'
+import ToastContainer from './components/ToastContainer'
+import ApiKeyLogin from './components/ApiKeyLogin'
 
 // Instance pages (local + remote shared)
 import Home from './pages/Home'
@@ -99,10 +102,23 @@ export default function App() {
   useTheme()
   const { loading: authLoading } = useAuth()
   const { loading: modeLoading, init } = useModeStore()
+  const mode = useModeStore(s => s.mode)
+  const [localAuthed, setLocalAuthed] = useState(() => !isNonLocalhost() || !!getLocalApiKey())
+
+  const handleLocalAuth = useCallback(() => {
+    setLocalAuthed(true)
+    // Re-init mode detection now that we have auth
+    init()
+  }, [init])
 
   useEffect(() => {
     init()
   }, [init])
+
+  // Show API key login when behind reverse proxy without a stored key
+  if (isNonLocalhost() && !localAuthed && (mode === 'local' || mode === null)) {
+    return <ApiKeyLogin onAuthenticated={handleLocalAuth} />
+  }
 
   if (modeLoading || authLoading) {
     return (
@@ -118,6 +134,8 @@ export default function App() {
   }
 
   return (
+    <>
+    <ToastContainer />
     <Routes>
       {/* OAuth callback (no layout) */}
       <Route path="/auth/callback" element={<AuthCallback />} />
@@ -164,5 +182,6 @@ export default function App() {
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
