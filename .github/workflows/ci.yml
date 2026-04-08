@@ -215,6 +215,21 @@ jobs:
           command: deploy
           workingDirectory: cloud
 
+  provisioner:
+    needs: test
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy provisioner
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+          workingDirectory: provisioner
+
   install-worker:
     needs: test
     if: github.ref == 'refs/heads/master'

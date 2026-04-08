@@ -211,8 +211,9 @@ echo "[$(date)] Generating admin API key"
 API_KEY_OUTPUT=$(sudo -u solon /opt/solon/bin/solon keys create --name managed-admin --scope admin 2>&1)
 API_KEY=$(echo "$API_KEY_OUTPUT" | grep -oP 'sol_sk_live_[a-zA-Z0-9_]+' || true)
 if [ -z "$API_KEY" ]; then
-  echo "[$(date)] Warning: Could not extract API key from output: $API_KEY_OUTPUT"
-  API_KEY=""
+  echo "[$(date)] ERROR: Could not extract API key from output: $API_KEY_OUTPUT"
+  send_callback "failed" "" "" "Failed to extract API key from Solon keys command"
+  exit 1
 fi
 
 # Save key locally for debugging
