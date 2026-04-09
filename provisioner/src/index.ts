@@ -41,21 +41,27 @@ app.post('/webhook/provision', async (c) => {
 })
 
 async function handleCreate(env: Env, request: ProvisionRequest): Promise<void> {
+  console.log(`handleCreate called for instance ${request.instance_id}`)
+
   const tier = request.tier ?? 'starter'
   const region = request.region ?? 'eu-central'
   const rawName = request.name ?? `solon-${request.instance_id.slice(0, 8)}`
-  // Sanitize name: only allow lowercase alphanumeric and hyphens
   const name = rawName.replace(/[^a-z0-9-]/gi, '').slice(0, 63).toLowerCase()
 
   if (!TIER_SERVER_TYPES[tier]) {
-    throw new Error(`Invalid tier: ${tier}`)
+    console.error(`Invalid tier: ${tier}`)
+    await sendCallback(env, { instance_id: request.instance_id, status: 'failed', error: `Invalid tier: ${tier}` })
+    return
   }
   if (!REGION_LOCATIONS[region]) {
-    throw new Error(`Invalid region: ${region}`)
+    console.error(`Invalid region: ${region}`)
+    await sendCallback(env, { instance_id: request.instance_id, status: 'failed', error: `Invalid region: ${region}` })
+    return
   }
 
   const serverType = TIER_SERVER_TYPES[tier]
   const location = REGION_LOCATIONS[region]
+  console.log(`Creating server: type=${serverType} location=${location} name=solon-managed-${name}`)
 
   const userData = generateCloudInit(env, {
     instanceId: request.instance_id,
@@ -63,12 +69,30 @@ async function handleCreate(env: Env, request: ProvisionRequest): Promise<void> 
     callbackSecret: env.CLOUD_API_CALLBACK_SECRET,
   })
 
+  // Resolve SSH key ID if configured (for debugging access)
+  let sshKeyNames: string[] | undefined
+  if (env.SSH_PUBLIC_KEY) {
+    try {
+      const keysResp = await fetch('https://api.hetzner.cloud/v1/ssh_keys', {
+        headers: { Authorization: `Bearer ${env.HETZNER_API_TOKEN}` },
+      })
+      const keysData = (await keysResp.json()) as { ssh_keys: Array<{ id: number; name: string }> }
+      if (keysData.ssh_keys.length > 0) {
+        sshKeyNames = keysData.ssh_keys.map((k) => k.name)
+        console.log(`Using SSH keys: ${sshKeyNames.join(', ')}`)
+      }
+    } catch (e) {
+      console.warn('Could not fetch SSH keys:', e)
+    }
+  }
+
   try {
     const result = await createServer(env.HETZNER_API_TOKEN, {
       name: `solon-managed-${name}`,
       serverType,
       location,
       userData,
+      sshKeyNames,
       labels: {
         service: 'solon-managed',
         solon_instance_id: request.instance_id,

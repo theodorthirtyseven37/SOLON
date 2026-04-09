@@ -43,15 +43,17 @@ export interface CallbackPayload {
 
 /** Maps tier names to Hetzner server types */
 export const TIER_SERVER_TYPES: Record<string, string> = {
-  starter: 'cx22',
-  pro: 'cx42',
+  starter: 'cx23',
+  pro: 'cx43',
   gpu: 'gx11',
 }
 
 /** Maps region names to Hetzner locations */
 export const REGION_LOCATIONS: Record<string, string> = {
-  'eu-central': 'fsn1',
+  'eu-central': 'nbg1',
   'eu-west': 'nbg1',
   'eu-north': 'hel1',
   'us-east': 'ash',
+  'us-west': 'hil',
+  'asia': 'sin',
 }
