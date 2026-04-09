@@ -748,6 +748,34 @@ func (m *Manager) OpenClawContainerIP(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("no running OpenClaw gateway container found")
 }
 
+// ExecOpenClawAgent runs the openclaw agent CLI inside the container and returns the JSON output.
+func (m *Manager) ExecOpenClawAgent(ctx context.Context, message string) (string, error) {
+	containers, err := m.docker.containerList(ctx, LabelManaged+"=true")
+	if err != nil {
+		return nil, fmt.Errorf("listing containers: %w", err)
+	}
+
+	var containerID string
+	for _, c := range containers {
+		if c.Labels[LabelPolicy] == "openclaw-gateway" && c.State == "running" {
+			containerID = c.ID
+			break
+		}
+	}
+	if containerID == "" {
+		return nil, fmt.Errorf("no running OpenClaw container found")
+	}
+
+	output, err := m.docker.containerExec(ctx, containerID,
+		[]string{"openclaw", "agent", "--agent", "main", "--message", message, "--json", "--timeout", "180"},
+		nil,
+	)
+	if err != nil {
+		return "", fmt.Errorf("exec openclaw agent: %w", err)
+	}
+	return output, nil
+}
+
 // Stats returns resource usage for a sandbox.
 func (m *Manager) Stats(ctx context.Context, id string) (*SandboxStats, error) {
 	sb, err := m.store.GetSandbox(id)
