@@ -752,7 +752,7 @@ func (m *Manager) OpenClawContainerIP(ctx context.Context) (string, error) {
 func (m *Manager) ExecOpenClawAgent(ctx context.Context, message string) (string, error) {
 	containers, err := m.docker.containerList(ctx, LabelManaged+"=true")
 	if err != nil {
-		return nil, fmt.Errorf("listing containers: %w", err)
+		return "", fmt.Errorf("listing containers: %w", err)
 	}
 
 	var containerID string
@@ -763,7 +763,7 @@ func (m *Manager) ExecOpenClawAgent(ctx context.Context, message string) (string
 		}
 	}
 	if containerID == "" {
-		return nil, fmt.Errorf("no running OpenClaw container found")
+		return "", fmt.Errorf("no running OpenClaw container found")
 	}
 
 	output, err := m.docker.containerExec(ctx, containerID,
