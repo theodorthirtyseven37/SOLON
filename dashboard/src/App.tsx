@@ -22,6 +22,7 @@ import Sandboxes from './pages/instance/Sandboxes'
 import Activity from './pages/instance/Activity'
 import InstanceSettings from './pages/instance/InstanceSettings'
 import Setup from './pages/instance/Setup'
+import OpenClawUI from './pages/instance/OpenClawUI'
 
 // Cloud pages
 import Login from './pages/cloud/Login'
@@ -161,6 +162,7 @@ export default function App() {
         <Route path="/activity" element={<LocalRoute><Activity /></LocalRoute>} />
         <Route path="/settings" element={<LocalRoute><InstanceSettings /></LocalRoute>} />
         <Route path="/setup" element={<LocalRoute><Setup onComplete={() => window.location.href = '/home'} /></LocalRoute>} />
+        <Route path="/openclaw" element={<LocalRoute><OpenClawUI /></LocalRoute>} />
 
         {/* Cloud routes */}
         <Route path="/instances" element={<RequireCloudAuth><Instances /></RequireCloudAuth>} />
