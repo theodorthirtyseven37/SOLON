@@ -172,6 +172,8 @@ func (g *Gateway) setupRoutes() {
 		r.Post("/api/v1/openclaw/start", g.handleOpenClawStart)
 		r.Get("/api/v1/openclaw/status", g.handleOpenClawStatus)
 		r.Post("/api/v1/openclaw/send", g.handleOpenClawSend)
+		r.Get("/api/v1/openclaw/sessions", g.handleOpenClawSessions)
+		r.Get("/api/v1/openclaw/ui", g.handleOpenClawUI)
 	})
 
 	// OpenClaw WebSocket proxy (separate group for query param auth support)

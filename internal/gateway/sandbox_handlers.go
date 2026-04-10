@@ -339,6 +339,41 @@ func (g *Gateway) handleListTiers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"tiers": sandbox.ListTiers()})
 }
 
+func (g *Gateway) handleOpenClawSessions(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": []any{}})
+		return
+	}
+
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"sessions", "--json"})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": []any{}})
+		return
+	}
+
+	// Forward the raw JSON from OpenClaw
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(output))
+}
+
+func (g *Gateway) handleOpenClawUI(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
+		return
+	}
+
+	containerIP, err := g.sandboxes.OpenClawContainerIP(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running")
+		return
+	}
+
+	// Redirect to the OpenClaw control UI inside the container
+	uiURL := fmt.Sprintf("http://%s:18789/#token=solon-openclaw-token", containerIP)
+	http.Redirect(w, r, uiURL, http.StatusTemporaryRedirect)
+}
+
 // stripDockerLogHeaders removes the 8-byte Docker multiplex log headers.
 // Docker log format: [stream_type(1) 0 0 0 size(4)] payload
 func stripDockerLogHeaders(data []byte) []byte {
