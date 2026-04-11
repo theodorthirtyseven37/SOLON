@@ -174,6 +174,13 @@ func (g *Gateway) setupRoutes() {
 		r.Post("/api/v1/openclaw/send", g.handleOpenClawSend)
 		r.Get("/api/v1/openclaw/sessions", g.handleOpenClawSessions)
 		r.Get("/api/v1/openclaw/ui", g.handleOpenClawUI)
+		r.Get("/api/v1/openclaw/channels", g.handleOpenClawChannels)
+		r.Post("/api/v1/openclaw/channels", g.handleOpenClawAddChannel)
+		r.Delete("/api/v1/openclaw/channels/{name}", g.handleOpenClawRemoveChannel)
+		r.Get("/api/v1/openclaw/agents", g.handleOpenClawAgents)
+		r.Get("/api/v1/openclaw/skills", g.handleOpenClawSkills)
+		r.Get("/api/v1/openclaw/workspace/{filename}", g.handleOpenClawReadFile)
+		r.Put("/api/v1/openclaw/workspace/{filename}", g.handleOpenClawWriteFile)
 	})
 
 	// OpenClaw WebSocket proxy (separate group for query param auth support)

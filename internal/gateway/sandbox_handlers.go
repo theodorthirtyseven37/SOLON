@@ -357,6 +357,154 @@ func (g *Gateway) handleOpenClawSessions(w http.ResponseWriter, r *http.Request)
 	_, _ = w.Write([]byte(output))
 }
 
+func (g *Gateway) handleOpenClawChannels(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"channels": []any{}})
+		return
+	}
+
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"channels", "list", "--json"})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"channels": []any{}})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(output))
+}
+
+func (g *Gateway) handleOpenClawAddChannel(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
+		return
+	}
+
+	var req struct {
+		Channel  string `json:"channel"`
+		BotToken string `json:"bot_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Channel == "" {
+		writeError(w, http.StatusBadRequest, "channel is required")
+		return
+	}
+
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"channels", "add", "--channel", req.Channel, "--bot-token", req.BotToken})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("channel add error: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"result": output})
+}
+
+func (g *Gateway) handleOpenClawRemoveChannel(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
+		return
+	}
+
+	name := chi.URLParam(r, "name")
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"channels", "remove", "--channel", name})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("channel remove error: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"result": output})
+}
+
+func (g *Gateway) handleOpenClawAgents(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"agents": []any{}})
+		return
+	}
+
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"agents", "list", "--json"})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"agents": []any{}})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(output))
+}
+
+func (g *Gateway) handleOpenClawSkills(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"skills": []any{}})
+		return
+	}
+
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"skills", "list", "--json"})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"skills": []any{}})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(output))
+}
+
+var workspaceAllowlist = map[string]bool{
+	"SOUL.md":     true,
+	"IDENTITY.md": true,
+	"USER.md":     true,
+	"AGENTS.md":   true,
+}
+
+func (g *Gateway) handleOpenClawReadFile(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
+		return
+	}
+
+	filename := chi.URLParam(r, "filename")
+	if !workspaceAllowlist[filename] {
+		writeError(w, http.StatusForbidden, "filename not allowed")
+		return
+	}
+
+	filePath := "/root/.openclaw/workspace/" + filename
+	content, err := g.sandboxes.ExecInContainer(r.Context(), []string{"cat", filePath})
+	if err != nil {
+		content = ""
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"filename": filename, "content": content})
+}
+
+func (g *Gateway) handleOpenClawWriteFile(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
+		return
+	}
+
+	filename := chi.URLParam(r, "filename")
+	if !workspaceAllowlist[filename] {
+		writeError(w, http.StatusForbidden, "filename not allowed")
+		return
+	}
+
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	filePath := "/root/.openclaw/workspace/" + filename
+	if err := g.sandboxes.WriteToContainer(r.Context(), filePath, req.Content); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("write error: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
 func (g *Gateway) handleOpenClawUI(w http.ResponseWriter, r *http.Request) {
 	if g.sandboxes == nil {
 		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
