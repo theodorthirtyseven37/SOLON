@@ -70,9 +70,6 @@ jobs:
           - runner: macos-latest
             goos: darwin
             goarch: arm64
-          - runner: macos-13
-            goos: darwin
-            goarch: amd64
       fail-fast: false
     runs-on: ${{ matrix.runner }}
     steps:
