@@ -287,7 +287,15 @@ export default function Chat() {
               sessions.map(s => (
                 <button
                   key={s.sessionId}
-                  onClick={() => setActiveSession(s.sessionId)}
+                  onClick={() => {
+                    setActiveSession(s.sessionId)
+                    setMessages([{
+                      id: crypto.randomUUID(),
+                      role: 'system',
+                      content: `Resumed session: ${s.key.replace('agent:main:', '') || s.sessionId}\nModel: ${s.model} · ${formatTokens(s.totalTokens)} tokens\n\nPrevious messages are not loaded yet — new messages will continue this session.`,
+                      timestamp: Date.now(),
+                    }])
+                  }}
                   className={`w-full text-left px-3 py-2 text-sm transition-colors ${
                     activeSession === s.sessionId
                       ? 'bg-[var(--bg-hover)] text-[var(--text)]'
