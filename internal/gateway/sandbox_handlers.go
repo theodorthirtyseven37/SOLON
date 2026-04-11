@@ -193,7 +193,9 @@ func (g *Gateway) handleOpenClawSend(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the message from the request body
 	var req struct {
-		Message string `json:"message"`
+		Message  string `json:"message"`
+		Agent    string `json:"agent"`
+		Thinking string `json:"thinking"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		writeError(w, http.StatusBadRequest, "message is required")
@@ -201,7 +203,15 @@ func (g *Gateway) handleOpenClawSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run openclaw agent directly via docker exec (bypasses buggy agent-api bridge)
-	output, err := g.sandboxes.ExecOpenClawAgent(r.Context(), req.Message)
+	agent := req.Agent
+	if agent == "" {
+		agent = "main"
+	}
+	args := []string{"agent", "--agent", agent, "--message", req.Message, "--json", "--timeout", "180"}
+	if req.Thinking != "" && req.Thinking != "off" {
+		args = append(args, "--thinking", req.Thinking)
+	}
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), args)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("agent error: %v", err))
 		return

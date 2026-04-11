@@ -54,6 +54,9 @@ export default function Chat() {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeSession, setActiveSession] = useState<string | null>(null)
+  const [agentList, setAgentList] = useState<{ name: string }[]>([])
+  const [selectedAgent, setSelectedAgent] = useState('main')
+  const [thinkingLevel, setThinkingLevel] = useState<'off' | 'low' | 'medium' | 'high'>('medium')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -115,6 +118,9 @@ export default function Chat() {
   useEffect(() => {
     connect()
     loadSessions()
+    fetchJSON<{ agents?: { name: string }[] }>('/api/v1/openclaw/agents')
+      .then(d => setAgentList(d.agents || []))
+      .catch(() => {})
   }, [])
 
   async function handleSend() {
@@ -139,7 +145,7 @@ export default function Chat() {
       const resp = await fetch('/api/v1/openclaw/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, agent: selectedAgent, thinking: thinkingLevel }),
       })
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: { message: resp.statusText } }))
@@ -321,6 +327,25 @@ export default function Chat() {
               <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)}
                 className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--text)]">
                 {models.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
+              </select>
+            )}
+
+            {/* Agent selector — only in agent mode with multiple agents */}
+            {mode === 'agent' && agentList.length > 1 && (
+              <select value={selectedAgent} onChange={e => setSelectedAgent(e.target.value)}
+                className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--text)]">
+                {agentList.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+              </select>
+            )}
+
+            {/* Thinking level — only in agent mode */}
+            {mode === 'agent' && (
+              <select value={thinkingLevel} onChange={e => setThinkingLevel(e.target.value as 'off' | 'low' | 'medium' | 'high')}
+                className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--text)]">
+                <option value="off">Thinking: Off</option>
+                <option value="low">Thinking: Low</option>
+                <option value="medium">Thinking: Medium</option>
+                <option value="high">Thinking: High</option>
               </select>
             )}
           </div>
