@@ -47,8 +47,20 @@ jobs:
       - name: Verify dashboard build
         run: test -f internal/dashboard/dist/index.html || (echo "Dashboard build missing index.html" && exit 1)
 
-      - name: Test
+      - name: Test Go
         run: make test
+
+      - name: Test cloud API
+        run: cd cloud && npm ci && npm run test
+
+      - name: Typecheck cloud API
+        run: cd cloud && npm run typecheck
+
+      - name: Typecheck provisioner
+        run: cd provisioner && npm ci && npm run typecheck
+
+      - name: Typecheck relay
+        run: cd relay && npm ci && npx tsc --noEmit
 
       - name: Lint
         uses: golangci/golangci-lint-action@v7
