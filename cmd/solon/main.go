@@ -142,7 +142,7 @@ func serveCmd() *cobra.Command {
 			policies := guardrails.NewPolicyStore(guardrails.PoliciesDir())
 
 			// Optional: refresh catalog from remote on startup
-			go models.RefreshCatalogFromRemote("https://getsolon.dev/catalog.json")
+			go models.RefreshCatalogFromRemote("https://www.getsolon.dev/catalog.json")
 
 			// Initialize sandbox manager (optional — requires Docker)
 			var sandboxMgr *sandbox.Manager
