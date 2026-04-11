@@ -373,15 +373,49 @@ func (g *Gateway) handleOpenClawChannels(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"channels", "list", "--json"})
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"channels", "status", "--json"})
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"channels": []any{}})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(output))
+	// Parse the status response and transform into a flat channels array
+	var status struct {
+		Channels map[string]struct {
+			Configured bool   `json:"configured"`
+			Running    bool   `json:"running"`
+			LastError  string `json:"lastError"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal([]byte(output), &status); err != nil {
+		// Fallback: return raw output
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(output))
+		return
+	}
+
+	channels := make([]map[string]any, 0)
+	for name, ch := range status.Channels {
+		if !ch.Configured {
+			continue
+		}
+		s := "connected"
+		if !ch.Running {
+			s = "error"
+		}
+		entry := map[string]any{
+			"name":   name,
+			"type":   name,
+			"status": s,
+		}
+		if ch.LastError != "" {
+			entry["lastError"] = ch.LastError
+		}
+		channels = append(channels, entry)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"channels": channels})
 }
 
 func (g *Gateway) handleOpenClawAddChannel(w http.ResponseWriter, r *http.Request) {

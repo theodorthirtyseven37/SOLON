@@ -17,7 +17,8 @@ interface Channel {
   name: string
   type: string
   status: string
-  username: string
+  username?: string
+  lastError?: string
 }
 
 interface Skill {
@@ -67,6 +68,7 @@ export default function AgentSettings() {
   const [botToken, setBotToken] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [connectError, setConnectError] = useState('')
+  const [connectSuccess, setConnectSuccess] = useState('')
 
   // Workspace tab state
   const [selectedFile, setSelectedFile] = useState('SOUL.md')
@@ -131,6 +133,7 @@ export default function AgentSettings() {
     if (!botToken.trim()) return
     setConnecting(true)
     setConnectError('')
+    setConnectSuccess('')
     try {
       const res = await fetch('/api/v1/openclaw/channels', {
         method: 'POST',
@@ -144,6 +147,7 @@ export default function AgentSettings() {
       }
       setBotToken('')
       setShowTelegramForm(false)
+      setConnectSuccess('Channel added. Check the status above — the gateway may need a moment to connect.')
       await loadChannels()
     } catch (e: unknown) {
       setConnectError((e as Error).message)
@@ -281,6 +285,9 @@ export default function AgentSettings() {
                             <p className="text-xs text-[var(--text-tertiary)]">
                               {ch.type}{ch.username ? ` · @${ch.username}` : ''}
                             </p>
+                            {ch.lastError && (
+                              <p className="text-xs text-[var(--red)] mt-0.5">{ch.lastError}</p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -361,6 +368,9 @@ export default function AgentSettings() {
                       <p className="text-xs text-[var(--red)]">{connectError}</p>
                     )}
                   </div>
+                )}
+                {connectSuccess && (
+                  <p className="text-xs text-green-400">{connectSuccess}</p>
                 )}
               </Card>
             </div>
