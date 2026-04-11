@@ -399,7 +399,11 @@ func (g *Gateway) handleOpenClawAddChannel(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), []string{"channels", "add", "--channel", req.Channel, "--bot-token", req.BotToken})
+	args := []string{"channels", "add", "--channel", req.Channel}
+	if req.BotToken != "" {
+		args = append(args, "--token", req.BotToken)
+	}
+	output, err := g.sandboxes.ExecOpenClawCommand(r.Context(), args)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("channel add error: %v", err))
 		return
