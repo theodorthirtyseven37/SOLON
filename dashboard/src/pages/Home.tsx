@@ -219,11 +219,11 @@ export default function Home() {
             <h3 className="text-sm font-semibold text-[var(--text)]">OpenClaw UI</h3>
             <p className="text-xs text-[var(--text-tertiary)] mt-1">Full control panel in a new tab</p>
           </button>
-          <button onClick={() => navigate('/settings')}
+          <button onClick={() => navigate('/agent-settings')}
             className="text-left p-5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] hover:border-blue-500/30 transition-colors">
-            <div className="text-2xl mb-2">📱</div>
-            <h3 className="text-sm font-semibold text-[var(--text)]">Channels</h3>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">Telegram, WhatsApp, Discord</p>
+            <div className="text-2xl mb-2">⚙️</div>
+            <h3 className="text-sm font-semibold text-[var(--text)]">Agent Settings</h3>
+            <p className="text-xs text-[var(--text-tertiary)] mt-1">Model, channels, workspace, skills</p>
           </button>
         </div>
       )}
