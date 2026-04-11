@@ -1,5 +1,4 @@
-import { useEffect, useState, useCallback, Component } from 'react'
-import type { ErrorInfo, ReactNode } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { useTheme } from './hooks/useTheme'
@@ -36,26 +35,6 @@ import Team from './pages/cloud/Team'
 import AccountSettings from './pages/cloud/AccountSettings'
 import Users from './pages/cloud/Users'
 // Onboarding merged into Home page
-
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state = { error: null as Error | null }
-  static getDerivedStateFromError(error: Error) { return { error } }
-  componentDidCatch(error: Error, info: ErrorInfo) { console.error('React crash:', error, info) }
-  render() {
-    if (this.state.error) {
-      return (
-        <div style={{ padding: 40, fontFamily: 'monospace', color: '#c00' }}>
-          <h2>Page crashed</h2>
-          <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, color: '#666' }}>{this.state.error.stack}</pre>
-          <button onClick={() => { this.setState({ error: null }); window.location.reload() }}
-            style={{ marginTop: 16, padding: '8px 16px', cursor: 'pointer' }}>Reload</button>
-        </div>
-      )
-    }
-    return this.props.children
-  }
-}
 
 function RequireLocal({ children }: { children: React.ReactNode }) {
   const mode = useModeStore(s => s.mode)
@@ -157,7 +136,7 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
+    <>
     <ToastContainer />
     <Routes>
       {/* OAuth callback (no layout) */}
@@ -207,6 +186,6 @@ export default function App() {
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    </ErrorBoundary>
+    </>
   )
 }
