@@ -78,7 +78,8 @@ export default function Chat() {
     }
   }
 
-  useEffect(() => { connect() }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { connect().catch(() => setMode('disconnected')) }, [])
 
   async function handleSend() {
     const text = input.trim()
