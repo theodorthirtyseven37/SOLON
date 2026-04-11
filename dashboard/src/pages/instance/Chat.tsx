@@ -127,7 +127,7 @@ export default function Chat() {
     const text = input.trim()
     if (!text || sending) return
     setInput('')
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: text, timestamp: Date.now() }])
+    setMessages(prev => [...prev, { id: Math.random().toString(36).slice(2) + Date.now().toString(36), role: 'user', content: text, timestamp: Date.now() }])
 
     if (mode === 'agent') {
       await sendViaAgent(text)
@@ -138,7 +138,7 @@ export default function Chat() {
 
   async function sendViaAgent(text: string) {
     setSending(true)
-    const id = crypto.randomUUID()
+    const id = Math.random().toString(36).slice(2) + Date.now().toString(36)
     setMessages(prev => [...prev, { id, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true }])
 
     try {
@@ -213,7 +213,7 @@ export default function Chat() {
   async function sendViaSSE(text: string) {
     if (!selectedModel) { setError('No model selected'); return }
     setSending(true)
-    const id = crypto.randomUUID()
+    const id = Math.random().toString(36).slice(2) + Date.now().toString(36)
     setMessages(prev => [...prev, { id, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true }])
 
     try {
@@ -290,7 +290,7 @@ export default function Chat() {
                   onClick={() => {
                     setActiveSession(s.sessionId)
                     setMessages([{
-                      id: crypto.randomUUID(),
+                      id: Math.random().toString(36).slice(2) + Date.now().toString(36),
                       role: 'system',
                       content: `Resumed session: ${s.key.replace('agent:main:', '') || s.sessionId}\nModel: ${s.model} · ${formatTokens(s.totalTokens)} tokens\n\nPrevious messages are not loaded yet — new messages will continue this session.`,
                       timestamp: Date.now(),

@@ -138,8 +138,9 @@ export default function AgentSettings() {
         body: JSON.stringify({ channel: 'telegram', bot_token: botToken.trim() }),
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }))
-        throw new Error((err as { error?: string }).error || res.statusText)
+        const err = await res.json().catch(() => ({ error: res.statusText })) as Record<string, unknown>
+        const msg = typeof err.error === 'string' ? err.error : (err.error as Record<string, unknown>)?.message as string || res.statusText
+        throw new Error(msg)
       }
       setBotToken('')
       setShowTelegramForm(false)
