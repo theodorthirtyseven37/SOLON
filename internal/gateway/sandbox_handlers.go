@@ -212,63 +212,6 @@ func (g *Gateway) handleOpenClawSend(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(output))
 }
 
-func (g *Gateway) handleOpenClawSendLegacy(w http.ResponseWriter, r *http.Request) {
-	if g.sandboxes == nil {
-		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
-		return
-	}
-
-	containerIP, err := g.sandboxes.OpenClawContainerIP(r.Context())
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running")
-		return
-	}
-
-	// Forward the request body to the agent API inside the container
-	agentURL := fmt.Sprintf("http://%s:18790/send", containerIP)
-	proxyReq, err := http.NewRequestWithContext(r.Context(), "POST", agentURL, r.Body)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create request")
-		return
-	}
-	proxyReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Do(proxyReq)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, fmt.Sprintf("agent error: %v", err))
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// Forward Content-Type from the agent bridge (may be SSE or JSON)
-	ct := resp.Header.Get("Content-Type")
-	if ct == "" {
-		ct = "application/json"
-	}
-	w.Header().Set("Content-Type", ct)
-	if ct == "text/event-stream" {
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-	}
-	w.WriteHeader(resp.StatusCode)
-	// Flush SSE events as they arrive
-	if flusher, ok := w.(http.Flusher); ok && ct == "text/event-stream" {
-		buf := make([]byte, 4096)
-		for {
-			n, readErr := resp.Body.Read(buf)
-			if n > 0 {
-				_, _ = w.Write(buf[:n])
-				flusher.Flush()
-			}
-			if readErr != nil {
-				break
-			}
-		}
-	} else {
-		_, _ = io.Copy(w, resp.Body)
-	}
-}
 
 func (g *Gateway) handleOpenClawStart(w http.ResponseWriter, r *http.Request) {
 	if g.sandboxes == nil {
