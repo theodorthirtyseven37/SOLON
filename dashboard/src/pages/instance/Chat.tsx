@@ -15,7 +15,31 @@ interface ChatMessage {
   isStreaming?: boolean
 }
 
+interface SessionInfo {
+  key: string
+  sessionId: string
+  model: string
+  modelProvider: string
+  totalTokens: number
+  updatedAt: number
+}
+
 type ConnectionMode = 'agent' | 'direct' | 'connecting' | 'disconnected'
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+function timeAgo(timestamp: number): string {
+  const diff = Date.now() - timestamp
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
 
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -27,6 +51,9 @@ export default function Chat() {
   const [sending, setSending] = useState(false)
   const [starting, setStarting] = useState(false)
   const [dockerAvailable, setDockerAvailable] = useState(true)
+  const [sessions, setSessions] = useState<SessionInfo[]>([])
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [activeSession, setActiveSession] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -58,6 +85,13 @@ export default function Chat() {
     }
   }, [selectedModel])
 
+  const loadSessions = useCallback(async () => {
+    try {
+      const d = await fetchJSON<{ sessions?: SessionInfo[] }>('/api/v1/openclaw/sessions')
+      setSessions(d.sessions || [])
+    } catch { /* */ }
+  }, [])
+
   async function handleStartAgent() {
     setStarting(true)
     setError('')
@@ -78,7 +112,10 @@ export default function Chat() {
     }
   }
 
-  useEffect(() => { connect() }, [])
+  useEffect(() => {
+    connect()
+    loadSessions()
+  }, [])
 
   async function handleSend() {
     const text = input.trim()
@@ -228,105 +265,149 @@ export default function Chat() {
   const dotColor = { agent: 'bg-green-400', direct: 'bg-blue-400', connecting: 'bg-yellow-400 animate-pulse', disconnected: 'bg-red-400' }[mode]
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-card)]">
-        <div className="flex items-center gap-3">
-          <h1 className="text-sm font-semibold text-[var(--text)]">Chat</h1>
-          <span className={`flex items-center gap-1.5 text-xs ${modeColor}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-            {modeLabel}
-          </span>
-          {mode === 'direct' && models.length > 0 && (
-            <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)}
-              className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--text)]">
-              {models.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
-            </select>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {mode !== 'agent' && dockerAvailable && !starting && (
-            <button onClick={handleStartAgent}
-              className="text-xs px-3 py-1 rounded-md bg-green-600 text-white hover:bg-green-500 transition-colors">
-              Start Agent
-            </button>
-          )}
-          {starting && <span className="text-xs text-yellow-400 animate-pulse">Starting agent...</span>}
-          {mode === 'disconnected' && <button onClick={connect} className="text-xs text-[var(--accent)] hover:underline">Reconnect</button>}
-          {messages.length > 0 && <button onClick={() => setMessages([])} className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text)]">Clear</button>}
-        </div>
-      </div>
-
-      {error && (
-        <div className="px-4 py-2 bg-red-500/10 text-red-400 text-xs flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError('')} className="underline">dismiss</button>
+    <div className="flex h-[calc(100vh-3.5rem)]">
+      {/* Sidebar — only in agent mode */}
+      {sidebarOpen && mode === 'agent' && (
+        <div className="w-64 border-r border-[var(--border)] bg-[var(--bg-card)] flex flex-col shrink-0">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)]">
+            <span className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Conversations</span>
+            <button onClick={() => { setActiveSession(null); setMessages([]) }}
+              className="text-xs text-[var(--accent)] hover:underline">New</button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {sessions.length === 0 ? (
+              <p className="px-3 py-4 text-xs text-[var(--text-tertiary)]">No conversations yet</p>
+            ) : (
+              sessions.map(s => (
+                <button
+                  key={s.sessionId}
+                  onClick={() => setActiveSession(s.sessionId)}
+                  className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                    activeSession === s.sessionId
+                      ? 'bg-[var(--bg-hover)] text-[var(--text)]'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  <p className="truncate text-xs">{s.key.replace('agent:main:', '') || 'Conversation'}</p>
+                  <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">
+                    {s.model} · {formatTokens(s.totalTokens)} tokens · {timeAgo(s.updatedAt)}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center max-w-sm">
-              <p className="text-4xl mb-4">&#x1F99E;</p>
-              <p className="text-[var(--text-secondary)] text-sm">
-                {mode === 'agent' ? 'Connected to OpenClaw agent. Type a message to start.' :
-                 starting ? 'Setting up your agent environment...' :
-                 'Type a message to chat with your AI model.'}
-              </p>
-              {mode !== 'agent' && !starting && dockerAvailable && (
-                <button onClick={handleStartAgent}
-                  className="mt-3 px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-500 transition-colors">
-                  Launch OpenClaw Agent
-                </button>
-              )}
-              {mode !== 'agent' && !starting && dockerAvailable && (
-                <p className="text-xs text-[var(--text-tertiary)] mt-2">Full agent with tools, code execution, and web browsing.</p>
-              )}
-              {!dockerAvailable && mode !== 'agent' && (
-                <p className="text-xs text-[var(--text-tertiary)] mt-2">Install Docker to enable the full agent experience.</p>
-              )}
-              {starting && (
-                <div className="mt-3 flex items-center gap-2 text-yellow-400 text-sm">
-                  <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                  Pulling image and starting container... This may take a minute on first run.
-                </div>
-              )}
-            </div>
+      {/* Main chat area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-card)]">
+          <div className="flex items-center gap-3">
+            {mode === 'agent' && (
+              <button onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--bg-hover)]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
+                </svg>
+              </button>
+            )}
+            <h1 className="text-sm font-semibold text-[var(--text)]">Chat</h1>
+            <span className={`flex items-center gap-1.5 text-xs ${modeColor}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+              {modeLabel}
+            </span>
+            {mode === 'direct' && models.length > 0 && (
+              <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)}
+                className="text-xs px-2 py-1 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--text)]">
+                {models.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
+              </select>
+            )}
           </div>
-        ) : (
-          messages.map(msg => (
-            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
-                msg.role === 'user' ? 'bg-[var(--accent)] text-white rounded-br-sm' : 'bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] rounded-bl-sm'
-              }`}>
-                {msg.content || (msg.isStreaming ? (
-                  <span className="inline-flex gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)] animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)] animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)] animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </span>
-                ) : '')}
+          <div className="flex items-center gap-2">
+            {mode !== 'agent' && dockerAvailable && !starting && (
+              <button onClick={handleStartAgent}
+                className="text-xs px-3 py-1 rounded-md bg-green-600 text-white hover:bg-green-500 transition-colors">
+                Start Agent
+              </button>
+            )}
+            {starting && <span className="text-xs text-yellow-400 animate-pulse">Starting agent...</span>}
+            {mode === 'disconnected' && <button onClick={connect} className="text-xs text-[var(--accent)] hover:underline">Reconnect</button>}
+            {messages.length > 0 && <button onClick={() => setMessages([])} className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text)]">Clear</button>}
+          </div>
+        </div>
+
+        {error && (
+          <div className="px-4 py-2 bg-red-500/10 text-red-400 text-xs flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError('')} className="underline">dismiss</button>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          {messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center max-w-sm">
+                <p className="text-4xl mb-4">&#x1F99E;</p>
+                <p className="text-[var(--text-secondary)] text-sm">
+                  {mode === 'agent' ? 'Connected to OpenClaw agent. Type a message to start.' :
+                   starting ? 'Setting up your agent environment...' :
+                   'Type a message to chat with your AI model.'}
+                </p>
+                {mode !== 'agent' && !starting && dockerAvailable && (
+                  <button onClick={handleStartAgent}
+                    className="mt-3 px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-500 transition-colors">
+                    Launch OpenClaw Agent
+                  </button>
+                )}
+                {mode !== 'agent' && !starting && dockerAvailable && (
+                  <p className="text-xs text-[var(--text-tertiary)] mt-2">Full agent with tools, code execution, and web browsing.</p>
+                )}
+                {!dockerAvailable && mode !== 'agent' && (
+                  <p className="text-xs text-[var(--text-tertiary)] mt-2">Install Docker to enable the full agent experience.</p>
+                )}
+                {starting && (
+                  <div className="mt-3 flex items-center gap-2 text-yellow-400 text-sm">
+                    <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                    Pulling image and starting container... This may take a minute on first run.
+                  </div>
+                )}
               </div>
             </div>
-          ))
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+          ) : (
+            messages.map(msg => (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                  msg.role === 'user' ? 'bg-[var(--accent)] text-white rounded-br-sm' : 'bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] rounded-bl-sm'
+                }`}>
+                  {msg.content || (msg.isStreaming ? (
+                    <span className="inline-flex gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)] animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)] animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)] animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </span>
+                  ) : '')}
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
-      {/* Input */}
-      <div className="border-t border-[var(--border)] bg-[var(--bg-card)] px-4 py-3">
-        <div className="flex gap-2 max-w-3xl mx-auto">
-          <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder={mode === 'agent' ? 'Message your agent...' : 'Message...'} rows={1}
-            className="flex-1 px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] text-sm resize-none focus:outline-none focus:border-[var(--accent)]"
-            disabled={mode === 'connecting' || mode === 'disconnected'}
-            style={{ minHeight: '40px', maxHeight: '120px' }} />
-          <button onClick={handleSend} disabled={!input.trim() || sending || mode === 'connecting' || mode === 'disconnected'}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-30">
-            {sending ? '...' : 'Send'}
-          </button>
+        {/* Input */}
+        <div className="border-t border-[var(--border)] bg-[var(--bg-card)] px-4 py-3">
+          <div className="flex gap-2 max-w-3xl mx-auto">
+            <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
+              placeholder={mode === 'agent' ? 'Message your agent...' : 'Message...'} rows={1}
+              className="flex-1 px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] text-sm resize-none focus:outline-none focus:border-[var(--accent)]"
+              disabled={mode === 'connecting' || mode === 'disconnected'}
+              style={{ minHeight: '40px', maxHeight: '120px' }} />
+            <button onClick={handleSend} disabled={!input.trim() || sending || mode === 'connecting' || mode === 'disconnected'}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-30">
+              {sending ? '...' : 'Send'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
