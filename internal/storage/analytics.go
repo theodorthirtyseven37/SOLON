@@ -71,6 +71,10 @@ func (d *DB) GetRequestLog(limit int) ([]RequestLog, error) {
 		logs = append(logs, log)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating request log: %w", err)
+	}
+
 	return logs, nil
 }
 
