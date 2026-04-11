@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -330,7 +331,11 @@ func (d *dockerClient) containerExec(ctx context.Context, id string, cmd []strin
 	}
 	defer func() { _ = startResp.Body.Close() }()
 
-	output, _ := io.ReadAll(startResp.Body)
+	rawOutput, _ := io.ReadAll(startResp.Body)
+
+	// Docker exec multiplexed stream has 8-byte frame headers when Tty=false.
+	// Strip them to get clean output.
+	output := stripDockerStreamHeaders(rawOutput)
 
 	// Step 3: Check exit code
 	inspResp, err := d.do(ctx, "GET", "/exec/"+execResult.ID+"/json", nil)
@@ -476,4 +481,28 @@ type containerListEntry struct {
 	State  string            `json:"State"`
 	Status string            `json:"Status"`
 	Labels map[string]string `json:"Labels"`
+}
+
+// stripDockerStreamHeaders removes Docker multiplexed stream frame headers.
+// Docker exec with Tty=false wraps each output chunk with an 8-byte header:
+// [stream_type(1), 0, 0, 0, size(4 big-endian)].
+func stripDockerStreamHeaders(raw []byte) []byte {
+	var clean bytes.Buffer
+	pos := 0
+	for pos+8 <= len(raw) {
+		// Read frame header
+		frameSize := int(binary.BigEndian.Uint32(raw[pos+4 : pos+8]))
+		pos += 8
+		if pos+frameSize > len(raw) {
+			// Incomplete frame — append remaining
+			clean.Write(raw[pos:])
+			break
+		}
+		clean.Write(raw[pos : pos+frameSize])
+		pos += frameSize
+	}
+	if clean.Len() == 0 {
+		return raw // Fallback: return as-is if no headers detected
+	}
+	return clean.Bytes()
 }

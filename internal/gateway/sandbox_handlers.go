@@ -191,6 +191,33 @@ func (g *Gateway) handleOpenClawSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse the message from the request body
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
+		writeError(w, http.StatusBadRequest, "message is required")
+		return
+	}
+
+	// Run openclaw agent directly via docker exec (bypasses buggy agent-api bridge)
+	output, err := g.sandboxes.ExecOpenClawAgent(r.Context(), req.Message)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("agent error: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(output))
+}
+
+func (g *Gateway) handleOpenClawSendLegacy(w http.ResponseWriter, r *http.Request) {
+	if g.sandboxes == nil {
+		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
+		return
+	}
+
 	containerIP, err := g.sandboxes.OpenClawContainerIP(r.Context())
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running")
@@ -206,7 +233,7 @@ func (g *Gateway) handleOpenClawSend(w http.ResponseWriter, r *http.Request) {
 	}
 	proxyReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 2 * time.Minute}
+	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(proxyReq)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("agent error: %v", err))

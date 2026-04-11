@@ -546,7 +546,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 				return nil, fmt.Errorf("starting build container: %w", err)
 			}
 
-			_, err = m.docker.containerExec(ctx, tmpID, []string{"npm", "install", "-g", "openclaw"}, nil)
+			_, err = m.docker.containerExec(ctx, tmpID, []string{"npm", "install", "-g", "openclaw@2026.3.24"}, nil)
 			if err != nil {
 				_ = m.docker.containerRemove(ctx, tmpID)
 				return nil, fmt.Errorf("installing openclaw: %w", err)
@@ -610,6 +610,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 			"Env": []string{
 				fmt.Sprintf("ANTHROPIC_API_KEY=%s", providerKey),
 				"OPENCLAW_GATEWAY_TOKEN=solon-openclaw-token",
+				"OPENCLAW_MODEL=anthropic/claude-sonnet-4-6",
 				"OPENCLAW_NO_RESPAWN=1",
 				fmt.Sprintf("SOLON_ENDPOINT=http://%s:%d", solonHost, m.solonPort),
 				"NODE_ENV=production",
@@ -641,16 +642,15 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 						"          'Connection': 'keep-alive',\n"+
 						"          'Access-Control-Allow-Origin': '*'\n"+
 						"        });\n"+
-						"        proc.stdout.on('data', d => {\n"+
-						"          const lines = d.toString().split('\\n').filter(l => l.trim());\n"+
-						"          for (const line of lines) {\n"+
-						"            res.write('data: ' + line + '\\n\\n');\n"+
-						"          }\n"+
-						"        });\n"+
+						"        let stdout = '';\n"+
+						"        proc.stdout.on('data', d => { stdout += d.toString(); });\n"+
 						"        proc.stderr.on('data', d => {\n"+
 						"          res.write('event: error\\ndata: ' + JSON.stringify({ error: d.toString() }) + '\\n\\n');\n"+
 						"        });\n"+
 						"        proc.on('close', code => {\n"+
+						"          if (stdout.trim()) {\n"+
+						"            res.write('data: ' + stdout.trim() + '\\n\\n');\n"+
+						"          }\n"+
 						"          res.write('event: done\\ndata: ' + JSON.stringify({ exit_code: code }) + '\\n\\n');\n"+
 						"          res.end();\n"+
 						"        });\n"+
@@ -746,6 +746,34 @@ func (m *Manager) OpenClawContainerIP(ctx context.Context) (string, error) {
 	}
 
 	return "", fmt.Errorf("no running OpenClaw gateway container found")
+}
+
+// ExecOpenClawAgent runs the openclaw agent CLI inside the container and returns the JSON output.
+func (m *Manager) ExecOpenClawAgent(ctx context.Context, message string) (string, error) {
+	containers, err := m.docker.containerList(ctx, LabelManaged+"=true")
+	if err != nil {
+		return "", fmt.Errorf("listing containers: %w", err)
+	}
+
+	var containerID string
+	for _, c := range containers {
+		if c.Labels[LabelPolicy] == "openclaw-gateway" && c.State == "running" {
+			containerID = c.ID
+			break
+		}
+	}
+	if containerID == "" {
+		return "", fmt.Errorf("no running OpenClaw container found")
+	}
+
+	output, err := m.docker.containerExec(ctx, containerID,
+		[]string{"openclaw", "agent", "--agent", "main", "--message", message, "--json", "--timeout", "180"},
+		nil,
+	)
+	if err != nil {
+		return "", fmt.Errorf("exec openclaw agent: %w", err)
+	}
+	return output, nil
 }
 
 // Stats returns resource usage for a sandbox.
