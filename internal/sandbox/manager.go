@@ -748,8 +748,8 @@ func (m *Manager) OpenClawContainerIP(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("no running OpenClaw gateway container found")
 }
 
-// ExecOpenClawAgent runs the openclaw agent CLI inside the container and returns the JSON output.
-func (m *Manager) ExecOpenClawAgent(ctx context.Context, message string) (string, error) {
+// ExecOpenClawCommand runs an arbitrary openclaw CLI command inside the container.
+func (m *Manager) ExecOpenClawCommand(ctx context.Context, args []string) (string, error) {
 	containers, err := m.docker.containerList(ctx, LabelManaged+"=true")
 	if err != nil {
 		return "", fmt.Errorf("listing containers: %w", err)
@@ -766,14 +766,70 @@ func (m *Manager) ExecOpenClawAgent(ctx context.Context, message string) (string
 		return "", fmt.Errorf("no running OpenClaw container found")
 	}
 
-	output, err := m.docker.containerExec(ctx, containerID,
-		[]string{"openclaw", "agent", "--agent", "main", "--message", message, "--json", "--timeout", "180"},
-		nil,
-	)
+	cmd := append([]string{"openclaw"}, args...)
+	output, err := m.docker.containerExec(ctx, containerID, cmd, nil)
 	if err != nil {
-		return "", fmt.Errorf("exec openclaw agent: %w", err)
+		return "", fmt.Errorf("exec openclaw %v: %w", args, err)
 	}
 	return output, nil
+}
+
+// ExecInContainer runs a raw command (no "openclaw" prefix) inside the running
+// OpenClaw container. Same container-finding pattern as ExecOpenClawCommand.
+func (m *Manager) ExecInContainer(ctx context.Context, cmd []string) (string, error) {
+	containers, err := m.docker.containerList(ctx, LabelManaged+"=true")
+	if err != nil {
+		return "", fmt.Errorf("listing containers: %w", err)
+	}
+
+	var containerID string
+	for _, c := range containers {
+		if c.Labels[LabelPolicy] == "openclaw-gateway" && c.State == "running" {
+			containerID = c.ID
+			break
+		}
+	}
+	if containerID == "" {
+		return "", fmt.Errorf("no running OpenClaw container found")
+	}
+
+	output, err := m.docker.containerExec(ctx, containerID, cmd, nil)
+	if err != nil {
+		return "", fmt.Errorf("exec %v: %w", cmd, err)
+	}
+	return output, nil
+}
+
+// WriteToContainer writes content to a file inside the OpenClaw container using
+// sh -c with printf to avoid heredoc quoting issues.
+func (m *Manager) WriteToContainer(ctx context.Context, filePath string, content string) error {
+	containers, err := m.docker.containerList(ctx, LabelManaged+"=true")
+	if err != nil {
+		return fmt.Errorf("listing containers: %w", err)
+	}
+
+	var containerID string
+	for _, c := range containers {
+		if c.Labels[LabelPolicy] == "openclaw-gateway" && c.State == "running" {
+			containerID = c.ID
+			break
+		}
+	}
+	if containerID == "" {
+		return fmt.Errorf("no running OpenClaw container found")
+	}
+
+	// Use printf %s to safely write arbitrary content without shell interpretation
+	// Escape single quotes in the content by ending the quote, inserting a literal
+	// single quote, then reopening the quote.
+	escaped := strings.ReplaceAll(content, "'", "'\\''")
+	shCmd := fmt.Sprintf("printf '%%s' '%s' > '%s'", escaped, filePath)
+
+	_, err = m.docker.containerExec(ctx, containerID, []string{"sh", "-c", shCmd}, nil)
+	if err != nil {
+		return fmt.Errorf("writing file %s: %w", filePath, err)
+	}
+	return nil
 }
 
 // Stats returns resource usage for a sandbox.
