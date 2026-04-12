@@ -55,6 +55,12 @@ func UIAuthFromCookieOrQuery(next http.Handler) http.Handler {
 	})
 }
 
+// isWebSocketUpgrade returns true when the request is an HTTP→WebSocket upgrade.
+func isWebSocketUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") &&
+		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
+}
+
 // handleOpenClawWS upgrades an HTTP connection to WebSocket and proxies
 // it bidirectionally to the OpenClaw gateway inside the Docker container.
 // Auth is validated by middleware BEFORE this handler is called.
@@ -62,12 +68,6 @@ func (g *Gateway) handleOpenClawWS(w http.ResponseWriter, r *http.Request) {
 	// Guard: sandbox manager must be available
 	if g.sandboxes == nil {
 		writeError(w, http.StatusServiceUnavailable, "sandbox management not available (Docker not detected)")
-		return
-	}
-
-	// Guard: connection limit
-	if activeWSConns.Load() >= maxWSConnections {
-		writeError(w, http.StatusServiceUnavailable, "too many WebSocket connections")
 		return
 	}
 
@@ -81,6 +81,17 @@ func (g *Gateway) handleOpenClawWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	upstreamURL := fmt.Sprintf("ws://%s:%d", containerIP, openclawGatewayPort+1)
+	g.proxyWS(w, r, upstreamURL)
+}
+
+// proxyWS is the shared WebSocket bidirectional-proxy routine used by both
+// the /api/v1/openclaw/ws bridge and the UI reverse proxy's WS upgrades.
+func (g *Gateway) proxyWS(w http.ResponseWriter, r *http.Request, upstreamURL string) {
+	// Guard: connection limit
+	if activeWSConns.Load() >= maxWSConnections {
+		writeError(w, http.StatusServiceUnavailable, "too many WebSocket connections")
+		return
+	}
 
 	// Validate origin (before upgrade)
 	if !g.isAllowedWSOrigin(r) {

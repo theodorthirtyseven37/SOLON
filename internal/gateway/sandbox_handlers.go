@@ -513,6 +513,25 @@ func (g *Gateway) handleOpenClawUIProxy(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	containerIP, err := g.sandboxes.OpenClawContainerIP(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running — start it first via the dashboard or 'solon openclaw'")
+		return
+	}
+
+	// WebSocket upgrade — the OpenClaw UI's client-side JS opens a WS to this
+	// path. Proxy it to the gateway (same port as HTTP; OpenClaw serves both
+	// protocols on 18789). Must run BEFORE the trailing-slash redirect since
+	// WS clients don't follow 307s.
+	if isWebSocketUpgrade(r) {
+		upstreamURL := fmt.Sprintf("ws://%s:%d", containerIP, openclawGatewayPort)
+		if r.URL.RawQuery != "" {
+			upstreamURL += "?" + r.URL.RawQuery
+		}
+		g.proxyWS(w, r, upstreamURL)
+		return
+	}
+
 	// Ensure trailing slash on the root UI path so the browser resolves
 	// relative asset URLs (./assets/foo.js) against /api/v1/openclaw/ui/
 	// instead of /api/v1/openclaw/ (which would miss the proxy prefix).
@@ -522,12 +541,6 @@ func (g *Gateway) handleOpenClawUIProxy(w http.ResponseWriter, r *http.Request) 
 			target += "?" + r.URL.RawQuery
 		}
 		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
-		return
-	}
-
-	containerIP, err := g.sandboxes.OpenClawContainerIP(r.Context())
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running — start it first via the dashboard or 'solon openclaw'")
 		return
 	}
 
