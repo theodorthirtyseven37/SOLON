@@ -37,6 +37,24 @@ func WSAuthFromQueryParam(next http.Handler) http.Handler {
 	})
 }
 
+// UIAuthFromCookieOrQuery extracts a token from the "solon-ui-token" cookie
+// or the ?token= query parameter and sets it as the Authorization header.
+// This allows browser iframe/asset requests to authenticate (iframes can't
+// set custom headers; cookies are the only same-origin auth mechanism
+// automatically included by the browser).
+func UIAuthFromCookieOrQuery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			if token := r.URL.Query().Get("token"); token != "" {
+				r.Header.Set("Authorization", "Bearer "+token)
+			} else if c, err := r.Cookie("solon-ui-token"); err == nil && c.Value != "" {
+				r.Header.Set("Authorization", "Bearer "+c.Value)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // handleOpenClawWS upgrades an HTTP connection to WebSocket and proxies
 // it bidirectionally to the OpenClaw gateway inside the Docker container.
 // Auth is validated by middleware BEFORE this handler is called.
