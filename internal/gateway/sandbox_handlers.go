@@ -550,6 +550,7 @@ func (g *Gateway) handleOpenClawUIProxy(w http.ResponseWriter, r *http.Request) 
 			Value:    token,
 			Path:     "/api/v1/openclaw/ui",
 			HttpOnly: true,
+			Secure:   r.TLS != nil,
 			SameSite: http.SameSiteStrictMode,
 			MaxAge:   3600, // 1 hour
 		})
