@@ -552,7 +552,12 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 				return nil, fmt.Errorf("installing openclaw: %w", err)
 			}
 
-			openclawCfg := `{"gateway":{"auth":{"mode":"token","token":"solon-openclaw-token"}}}`
+			// dangerouslyDisableDeviceAuth: the OpenClaw control UI normally requires
+			// a browser secure context (HTTPS or localhost) to generate a device
+			// identity. Since Solon reverse-proxies the UI and authenticates users
+			// at the proxy boundary via the Solon API key, we can safely bypass the
+			// device-identity check on the OpenClaw side.
+			openclawCfg := `{"gateway":{"auth":{"mode":"token","token":"solon-openclaw-token"},"controlUi":{"dangerouslyDisableDeviceAuth":true}}}`
 			_, _ = m.docker.containerExec(ctx, tmpID,
 				[]string{"sh", "-c", "mkdir -p /root/.openclaw && printf '%s' '" + openclawCfg + "' > /root/.openclaw/openclaw.json"},
 				nil,
@@ -677,6 +682,10 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 						"});\n"+
 						"server.listen(PORT, '0.0.0.0', () => console.log('[agent-api] listening on 0.0.0.0:' + PORT));\n"+
 						"API\n"+
+						// Patch existing OpenClaw config (from a previously-built volume)
+						// to set dangerouslyDisableDeviceAuth. New installs already get this
+						// baked in at image build, but pre-existing volumes need upgrading.
+						"node -e \"try{const fs=require('fs');const p='/root/.openclaw/openclaw.json';const c=JSON.parse(fs.readFileSync(p));c.gateway=c.gateway||{};c.gateway.controlUi=c.gateway.controlUi||{};if(!c.gateway.controlUi.dangerouslyDisableDeviceAuth){c.gateway.controlUi.dangerouslyDisableDeviceAuth=true;fs.writeFileSync(p,JSON.stringify(c,null,2));console.log('[solon] patched openclaw controlUi config');}}catch(e){}\" ; "+
 						// Start gateway on loopback (openclaw agent connects locally)
 						// --bind lan: accept connections from the Docker bridge network so Solon
 						// can reverse-proxy the control UI. OpenClaw refuses lan binding without
