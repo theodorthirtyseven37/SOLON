@@ -541,6 +541,17 @@ func (g *Gateway) handleOpenClawUIProxy(w http.ResponseWriter, r *http.Request) 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, err error) {
 		writeError(rw, http.StatusBadGateway, fmt.Sprintf("OpenClaw UI proxy error: %v", err))
 	}
+	// OpenClaw sets X-Frame-Options: DENY and CSP frame-ancestors 'none' to
+	// prevent clickjacking. We embed the UI in a same-origin iframe, so rewrite
+	// these headers to allow 'self' embedding.
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Del("X-Frame-Options")
+		if csp := resp.Header.Get("Content-Security-Policy"); csp != "" {
+			resp.Header.Set("Content-Security-Policy",
+				strings.ReplaceAll(csp, "frame-ancestors 'none'", "frame-ancestors 'self'"))
+		}
+		return nil
+	}
 
 	// Set a short-lived cookie on the initial HTML load so subsequent
 	// asset/API requests from the iframe authenticate automatically.
