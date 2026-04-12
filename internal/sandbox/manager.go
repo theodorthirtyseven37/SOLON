@@ -552,6 +552,27 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 				return nil, fmt.Errorf("installing openclaw: %w", err)
 			}
 
+			// Install a wrapper that blocks `openclaw update`. Self-updates inside
+			// the container bypass the pinned version in this file, leave the
+			// node_modules in a partially-written state (pi-tools chunks orphaned),
+			// and break the exec tool. Version bumps go through the weekly workflow
+			// at .github/workflows/openclaw-update.yml instead.
+			updateGuard := "#!/bin/sh\n" +
+				"if [ \"$1\" = \"update\" ]; then\n" +
+				"  echo \"[solon] openclaw update is disabled on Solon-managed installs.\" >&2\n" +
+				"  echo \"[solon] Version bumps are handled by .github/workflows/openclaw-update.yml\" >&2\n" +
+				"  exit 1\n" +
+				"fi\n" +
+				"exec /usr/local/bin/openclaw.real \"$@\"\n"
+			_, err = m.docker.containerExec(ctx, tmpID, []string{"sh", "-c",
+				"mv /usr/local/bin/openclaw /usr/local/bin/openclaw.real && " +
+					"cat > /usr/local/bin/openclaw <<'GUARD'\n" + updateGuard + "GUARD\n" +
+					"chmod +x /usr/local/bin/openclaw"}, nil)
+			if err != nil {
+				_ = m.docker.containerRemove(ctx, tmpID)
+				return nil, fmt.Errorf("installing openclaw update guard: %w", err)
+			}
+
 			// dangerouslyDisableDeviceAuth: the OpenClaw control UI normally requires
 			// a browser secure context (HTTPS or localhost) to generate a device
 			// identity. Since Solon reverse-proxies the UI and authenticates users
