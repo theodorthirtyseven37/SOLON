@@ -186,6 +186,15 @@ func (g *Gateway) isAllowedWSOrigin(r *http.Request) bool {
 		return true
 	}
 
+	// Same-origin (the Origin host matches the request Host) — always allow.
+	// This covers the reverse-proxied OpenClaw UI iframe which lives on the
+	// same server as Solon itself.
+	if host := r.Host; host != "" {
+		if strings.HasSuffix(origin, "://"+host) {
+			return true
+		}
+	}
+
 	// Localhost origins always allowed
 	if strings.HasPrefix(origin, "http://localhost") ||
 		strings.HasPrefix(origin, "http://127.0.0.1") ||
