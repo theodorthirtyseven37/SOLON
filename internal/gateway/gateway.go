@@ -173,7 +173,6 @@ func (g *Gateway) setupRoutes() {
 		r.Get("/api/v1/openclaw/status", g.handleOpenClawStatus)
 		r.Post("/api/v1/openclaw/send", g.handleOpenClawSend)
 		r.Get("/api/v1/openclaw/sessions", g.handleOpenClawSessions)
-		r.Get("/api/v1/openclaw/ui", g.handleOpenClawUI)
 		r.Get("/api/v1/openclaw/channels", g.handleOpenClawChannels)
 		r.Post("/api/v1/openclaw/channels", g.handleOpenClawAddChannel)
 		r.Delete("/api/v1/openclaw/channels/{name}", g.handleOpenClawRemoveChannel)
@@ -189,6 +188,16 @@ func (g *Gateway) setupRoutes() {
 		r.Use(g.LocalhostOrAuth)
 		r.Use(g.RequireAdminScope)
 		r.Get("/api/v1/openclaw/ws", g.handleOpenClawWS)
+	})
+
+	// OpenClaw UI reverse proxy (separate group for cookie/query auth support
+	// — iframes can't set custom headers, so we authenticate via cookie or ?token=)
+	r.Group(func(r chi.Router) {
+		r.Use(UIAuthFromCookieOrQuery)
+		r.Use(g.LocalhostOrAuth)
+		r.Use(g.RequireAdminScope)
+		r.Handle("/api/v1/openclaw/ui", http.HandlerFunc(g.handleOpenClawUIProxy))
+		r.Handle("/api/v1/openclaw/ui/*", http.HandlerFunc(g.handleOpenClawUIProxy))
 	})
 
 	// Dashboard — serve embedded static files (no auth, localhost only)

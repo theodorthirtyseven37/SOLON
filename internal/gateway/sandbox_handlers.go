@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -495,7 +498,16 @@ func (g *Gateway) handleOpenClawWriteFile(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
 
-func (g *Gateway) handleOpenClawUI(w http.ResponseWriter, r *http.Request) {
+// handleOpenClawUIProxy reverse-proxies HTTP requests to the OpenClaw control UI
+// running inside the Docker container. The prefix "/api/v1/openclaw/ui" is stripped
+// before forwarding so relative asset paths like "./assets/foo.js" resolve correctly
+// under the same proxy path (browser requests /api/v1/openclaw/ui/assets/foo.js which
+// becomes /assets/foo.js upstream).
+//
+// Auth: browser iframes can't set custom headers, so UIAuthFromCookieOrQuery middleware
+// converts ?token=<key> or cookie "solon-ui-token" into the Authorization header before
+// the normal auth middleware validates.
+func (g *Gateway) handleOpenClawUIProxy(w http.ResponseWriter, r *http.Request) {
 	if g.sandboxes == nil {
 		writeError(w, http.StatusServiceUnavailable, "sandbox management not available")
 		return
@@ -503,13 +515,47 @@ func (g *Gateway) handleOpenClawUI(w http.ResponseWriter, r *http.Request) {
 
 	containerIP, err := g.sandboxes.OpenClawContainerIP(r.Context())
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running")
+		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running — start it first via the dashboard or 'solon openclaw'")
 		return
 	}
 
-	// Redirect to the OpenClaw control UI inside the container
-	uiURL := fmt.Sprintf("http://%s:18789/#token=solon-openclaw-token", containerIP)
-	http.Redirect(w, r, uiURL, http.StatusTemporaryRedirect)
+	upstream, err := url.Parse(fmt.Sprintf("http://%s:%d", containerIP, openclawGatewayPort))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("invalid upstream URL: %v", err))
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	origDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		origDirector(req)
+		// Strip the route prefix so upstream sees paths like /, /assets/foo.js
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/api/v1/openclaw/ui")
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
+		}
+		req.Host = upstream.Host
+		// Remove Solon-specific auth — upstream runs with --auth none
+		req.Header.Del("Authorization")
+	}
+	proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, err error) {
+		writeError(rw, http.StatusBadGateway, fmt.Sprintf("OpenClaw UI proxy error: %v", err))
+	}
+
+	// Set a short-lived cookie on the initial HTML load so subsequent
+	// asset/API requests from the iframe authenticate automatically.
+	if token := r.URL.Query().Get("token"); token != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "solon-ui-token",
+			Value:    token,
+			Path:     "/api/v1/openclaw/ui",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+			MaxAge:   3600, // 1 hour
+		})
+	}
+
+	proxy.ServeHTTP(w, r)
 }
 
 // stripDockerLogHeaders removes the 8-byte Docker multiplex log headers.

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchJSON } from '../../api/client'
+import { fetchJSON, getLocalApiKey, isNonLocalhost } from '../../api/client'
 
 export default function OpenClawUI() {
   const navigate = useNavigate()
@@ -11,9 +11,14 @@ export default function OpenClawUI() {
     fetchJSON<{ available: boolean; running: boolean }>('/api/v1/openclaw/status')
       .then(s => {
         if (s.running) {
-          // The gateway control UI is accessible via the container's IP
-          // We proxy it through Solon's gateway
-          setUiUrl('/api/v1/openclaw/ui')
+          // Proxy the OpenClaw control UI through Solon's gateway.
+          // On non-localhost we pass the API key as ?token= so the proxy
+          // can authenticate and set a cookie for subsequent asset requests.
+          const apiKey = isNonLocalhost() ? getLocalApiKey() : null
+          const url = apiKey
+            ? `/api/v1/openclaw/ui?token=${encodeURIComponent(apiKey)}`
+            : '/api/v1/openclaw/ui'
+          setUiUrl(url)
         } else {
           setError('OpenClaw agent is not running. Start it from the Dashboard first.')
         }
