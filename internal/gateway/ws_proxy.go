@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -117,7 +118,18 @@ func (g *Gateway) proxyWS(w http.ResponseWriter, r *http.Request, upstreamURL st
 	ctx, cancel := context.WithTimeout(r.Context(), wsProxyTimeout)
 	defer cancel()
 
-	upstreamConn, _, err := websocket.Dial(ctx, upstreamURL, nil)
+	// Rewrite the Origin header to match the upstream so OpenClaw's internal
+	// origin check accepts the connection (the browser's Origin is the public
+	// Solon URL, which OpenClaw doesn't know about).
+	dialHeaders := http.Header{}
+	if u, perr := url.Parse(upstreamURL); perr == nil {
+		upstreamOrigin := "http://" + u.Host
+		dialHeaders.Set("Origin", upstreamOrigin)
+	}
+
+	upstreamConn, _, err := websocket.Dial(ctx, upstreamURL, &websocket.DialOptions{
+		HTTPHeader: dialHeaders,
+	})
 	if err != nil {
 		log.Printf("[ws-proxy] upstream dial error: %v", err)
 		_ = browserConn.Close(websocket.StatusBadGateway, "failed to connect to OpenClaw gateway")
