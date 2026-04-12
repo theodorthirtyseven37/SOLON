@@ -1,0 +1,96 @@
+name: OpenClaw Version Update
+
+on:
+  schedule:
+    # Mondays 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read current pinned version
+        id: current
+        run: |
+          VERSION=$(grep -oE 'openclaw@[0-9]+\.[0-9]+\.[0-9]+' internal/sandbox/manager.go | head -1 | cut -d@ -f2)
+          if [ -z "$VERSION" ]; then
+            echo "could not extract pinned version from manager.go" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current pinned: $VERSION"
+
+      - name: Query latest version from npm
+        id: latest
+        run: |
+          VERSION=$(npm view openclaw version)
+          if [ -z "$VERSION" ]; then
+            echo "could not fetch latest openclaw version from npm" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Latest on npm: $VERSION"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          if [ "${{ steps.current.outputs.version }}" = "${{ steps.latest.outputs.version }}" ]; then
+            echo "Already on latest. Nothing to do."
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          else
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Smoke test new version
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          docker run --rm node:22-slim bash -c "
+            set -e
+            npm install -g openclaw@${{ steps.latest.outputs.version }} >/dev/null 2>&1
+            echo '== openclaw --version =='
+            openclaw --version
+            echo '== openclaw agent --help =='
+            openclaw agent --help >/dev/null
+            echo '== openclaw channels list --json =='
+            openclaw channels list --json >/dev/null
+            echo '== openclaw skills list --json =='
+            openclaw skills list --json >/dev/null
+            echo '== openclaw agents list --json =='
+            openclaw agents list --json >/dev/null
+            echo 'All smoke checks passed.'
+          "
+
+      - name: Bump version in manager.go
+        if: steps.compare.outputs.needs_update == 'true'
+        run: |
+          sed -i "s/openclaw@${{ steps.current.outputs.version }}/openclaw@${{ steps.latest.outputs.version }}/" internal/sandbox/manager.go
+          git diff --stat internal/sandbox/manager.go
+
+      - name: Open pull request
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/openclaw-${{ steps.latest.outputs.version }}
+          title: "chore: bump OpenClaw to v${{ steps.latest.outputs.version }}"
+          commit-message: "chore: bump OpenClaw to v${{ steps.latest.outputs.version }}"
+          body: |
+            Automated bump from v${{ steps.current.outputs.version }} to v${{ steps.latest.outputs.version }}.
+
+            ## Smoke checks (passed)
+            - `npm install -g openclaw@${{ steps.latest.outputs.version }}` succeeded
+            - `openclaw --version`, `agent --help`, `channels list --json`, `skills list --json`, `agents list --json` all ran without error
+
+            ## Review checklist
+            - [ ] Read the [OpenClaw release notes](https://www.npmjs.com/package/openclaw/v/${{ steps.latest.outputs.version }}) for breaking changes
+            - [ ] Confirm the default model/provider hasn't changed (v2026.4.8 regressed here)
+            - [ ] Deploy to staging and verify chat, channels, and workspace editor still work
+            - [ ] Check that `EnsureOpenClaw` still launches the container cleanly
+
+            This PR was opened by `.github/workflows/openclaw-update.yml`.
