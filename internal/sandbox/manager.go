@@ -678,7 +678,12 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 						"server.listen(PORT, '0.0.0.0', () => console.log('[agent-api] listening on 0.0.0.0:' + PORT));\n"+
 						"API\n"+
 						// Start gateway on loopback (openclaw agent connects locally)
-						"openclaw gateway --port %d --bind loopback --allow-unconfigured --auth none &"+
+						// --bind lan: accept connections from the Docker bridge network so Solon
+						// can reverse-proxy the control UI. OpenClaw refuses lan binding without
+						// auth; we use the OPENCLAW_GATEWAY_TOKEN env var (already set above) as
+						// the internal token — Solon validates the user's API key at the proxy
+						// boundary before forwarding.
+						"openclaw gateway --port %d --bind lan --allow-unconfigured &"+
 						" sleep 5; "+
 						"exec node /tmp/agent-api.mjs",
 					gatewayPort+1, gatewayPort,
