@@ -15,9 +15,12 @@ export default function OpenClawUI() {
           // On non-localhost we pass the API key as ?token= so the proxy
           // can authenticate and set a cookie for subsequent asset requests.
           const apiKey = isNonLocalhost() ? getLocalApiKey() : null
+          // Trailing slash matters — the OpenClaw UI uses relative asset paths
+          // (./assets/*) that must resolve under /api/v1/openclaw/ui/ to stay
+          // inside the proxy route prefix.
           const url = apiKey
-            ? `/api/v1/openclaw/ui?token=${encodeURIComponent(apiKey)}`
-            : '/api/v1/openclaw/ui'
+            ? `/api/v1/openclaw/ui/?token=${encodeURIComponent(apiKey)}`
+            : '/api/v1/openclaw/ui/'
           setUiUrl(url)
         } else {
           setError('OpenClaw agent is not running. Start it from the Dashboard first.')

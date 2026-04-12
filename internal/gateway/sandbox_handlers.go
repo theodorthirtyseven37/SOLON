@@ -513,6 +513,18 @@ func (g *Gateway) handleOpenClawUIProxy(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Ensure trailing slash on the root UI path so the browser resolves
+	// relative asset URLs (./assets/foo.js) against /api/v1/openclaw/ui/
+	// instead of /api/v1/openclaw/ (which would miss the proxy prefix).
+	if r.URL.Path == "/api/v1/openclaw/ui" {
+		target := "/api/v1/openclaw/ui/"
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+		return
+	}
+
 	containerIP, err := g.sandboxes.OpenClawContainerIP(r.Context())
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "OpenClaw is not running — start it first via the dashboard or 'solon openclaw'")
@@ -541,14 +553,19 @@ func (g *Gateway) handleOpenClawUIProxy(w http.ResponseWriter, r *http.Request) 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, err error) {
 		writeError(rw, http.StatusBadGateway, fmt.Sprintf("OpenClaw UI proxy error: %v", err))
 	}
-	// OpenClaw sets X-Frame-Options: DENY and CSP frame-ancestors 'none' to
-	// prevent clickjacking. We embed the UI in a same-origin iframe, so rewrite
-	// these headers to allow 'self' embedding.
+	// Rewrite OpenClaw's response CSP/frame headers so the UI can be embedded
+	// in a same-origin iframe and still load its own blob-based web worker.
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		resp.Header.Del("X-Frame-Options")
 		if csp := resp.Header.Get("Content-Security-Policy"); csp != "" {
-			resp.Header.Set("Content-Security-Policy",
-				strings.ReplaceAll(csp, "frame-ancestors 'none'", "frame-ancestors 'self'"))
+			csp = strings.ReplaceAll(csp, "frame-ancestors 'none'", "frame-ancestors 'self'")
+			// OpenClaw creates a web worker from a blob URL; add worker-src
+			// if not already set (script-src would otherwise be used as fallback
+			// and 'self' doesn't cover blob:).
+			if !strings.Contains(csp, "worker-src") {
+				csp = strings.TrimSuffix(csp, ";") + "; worker-src 'self' blob:"
+			}
+			resp.Header.Set("Content-Security-Policy", csp)
 		}
 		return nil
 	}
