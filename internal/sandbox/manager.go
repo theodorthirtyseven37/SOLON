@@ -546,7 +546,7 @@ func (m *Manager) EnsureOpenClaw(ctx context.Context, providerKey string) (*Open
 				return nil, fmt.Errorf("starting build container: %w", err)
 			}
 
-			_, err = m.docker.containerExec(ctx, tmpID, []string{"npm", "install", "-g", "openclaw@2026.3.24"}, nil)
+			_, err = m.docker.containerExec(ctx, tmpID, []string{"npm", "install", "-g", "openclaw@2026.4.11"}, nil)
 			if err != nil {
 				_ = m.docker.containerRemove(ctx, tmpID)
 				return nil, fmt.Errorf("installing openclaw: %w", err)
