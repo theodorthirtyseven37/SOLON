@@ -39,7 +39,7 @@ export function clearToken() {
   localStorage.removeItem(CLOUD_TOKEN_KEY)
 }
 
-function extractErrorMessage(body: unknown, fallback: string): string {
+export function extractErrorMessage(body: unknown, fallback: string): string {
   if (body && typeof body === 'object') {
     const err = (body as { error?: unknown }).error
     if (typeof err === 'string') return err
@@ -55,6 +55,11 @@ function extractErrorMessage(body: unknown, fallback: string): string {
   return fallback
 }
 
+export async function errorFromResponse(res: Response): Promise<Error> {
+  const body = await res.json().catch(() => null)
+  return new Error(extractErrorMessage(body, `HTTP ${res.status} ${res.statusText}`.trim()))
+}
+
 export async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
   const apiKey = isNonLocalhost() ? getLocalApiKey() : null
   const res = await fetch(url, {
@@ -65,10 +70,7 @@ export async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> 
       ...opts?.headers,
     },
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(extractErrorMessage(body, `HTTP ${res.status} ${res.statusText}`.trim()))
-  }
+  if (!res.ok) throw await errorFromResponse(res)
   return res.json()
 }
 
@@ -131,10 +133,7 @@ export async function cloudFetch<T>(path: string, opts?: RequestInit): Promise<T
     throw new Error('Unauthorized')
   }
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(extractErrorMessage(body, `HTTP ${res.status} ${res.statusText}`.trim()))
-  }
+  if (!res.ok) throw await errorFromResponse(res)
 
   return res.json()
 }

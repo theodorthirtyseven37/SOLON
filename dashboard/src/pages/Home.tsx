@@ -4,7 +4,7 @@ import { useModeStore } from '../store/mode'
 import { useServerStore } from '../store/server'
 import { useAuthStore } from '../store/auth'
 import Card from '../components/Card'
-import { fetchJSON, getLocalApiKey, isNonLocalhost } from '../api/client'
+import { errorFromResponse, fetchJSON, getLocalApiKey, isNonLocalhost } from '../api/client'
 import type { UsageStats } from '../api/types'
 
 function authHeaders(): Record<string, string> {
@@ -107,7 +107,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ message: msg }),
       })
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      if (!resp.ok) throw await errorFromResponse(resp)
       const data = await resp.json() as Record<string, unknown>
       const result = data.result as Record<string, unknown> | undefined
       const payloads = result?.payloads as { text?: string }[] | undefined
