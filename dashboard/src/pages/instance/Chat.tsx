@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { fetchJSON, getLocalApiKey, isNonLocalhost } from '../../api/client'
+import { errorFromResponse, fetchJSON, getLocalApiKey, isNonLocalhost } from '../../api/client'
 import type { ModelInfo } from '../../api/types'
 
 function authHeaders(): Record<string, string> {
@@ -100,10 +100,7 @@ export default function Chat() {
     setError('')
     try {
       await fetch('/api/v1/openclaw/start', { method: 'POST', headers: authHeaders() }).then(async r => {
-        if (!r.ok) {
-          const err = await r.json().catch(() => ({ error: r.statusText })) as { error?: string }
-          throw new Error(err.error || `HTTP ${r.status}`)
-        }
+        if (!r.ok) throw await errorFromResponse(r)
       })
       // Wait briefly for container to be ready, then reconnect
       await new Promise(resolve => setTimeout(resolve, 3000))
@@ -147,10 +144,7 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ message: text, agent: selectedAgent, thinking: thinkingLevel }),
       })
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: { message: resp.statusText } }))
-        throw new Error((err as { error?: { message?: string } }).error?.message || `HTTP ${resp.status}`)
-      }
+      if (!resp.ok) throw await errorFromResponse(resp)
 
       const contentType = resp.headers.get('content-type') ?? ''
       if (contentType.includes('text/event-stream') && resp.body) {
@@ -225,10 +219,7 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ model: selectedModel, messages: allMsgs, stream: true }),
       })
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: { message: response.statusText } }))
-        throw new Error((err as { error?: { message?: string } }).error?.message || `HTTP ${response.status}`)
-      }
+      if (!response.ok) throw await errorFromResponse(response)
 
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No response body')

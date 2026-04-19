@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ProviderConfig, SandboxPreset } from '../../api/types'
 import { providerAPI, sandboxAPI } from '../../api/local'
+import { errorFromResponse } from '../../api/client'
 
 const STEPS = ['welcome', 'provider', 'test', 'sandbox', 'done'] as const
 type Step = (typeof STEPS)[number]
@@ -69,10 +70,7 @@ export default function Setup({ onComplete }: SetupProps) {
           max_tokens: 10,
         }),
       })
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({ error: { message: resp.statusText } }))
-        throw new Error((data as { error?: { message?: string } }).error?.message || `HTTP ${resp.status}`)
-      }
+      if (!resp.ok) throw await errorFromResponse(resp)
       const data = await resp.json() as { choices?: { message?: { content?: string } }[] }
       const reply = data.choices?.[0]?.message?.content || 'OK'
       setTestResult(reply)

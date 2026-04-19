@@ -1,4 +1,4 @@
-import { fetchJSON, getLocalApiKey, isNonLocalhost } from './client'
+import { extractErrorMessage, fetchJSON, getLocalApiKey, isNonLocalhost } from './client'
 import type { InstanceAPI, HealthStatus, SystemInfo, ModelInfo, APIKey, RequestLogEntry, UsageStats, KeyUsage, TunnelStatus, RemoteStatus, CatalogModel, DownloadProgress, CreateKeyOptions, ProviderConfig, SandboxInfo, SandboxPreset, SandboxStats, SandboxTier } from './types'
 
 // Local instance API — same-origin calls, no auth headers needed
@@ -125,8 +125,8 @@ export function pullModel(name: string, callbacks: PullModelCallbacks): AbortCon
       })
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: { message: res.statusText } }))
-        callbacks.onError(err.error?.message || res.statusText)
+        const body = await res.json().catch(() => null)
+        callbacks.onError(extractErrorMessage(body, `HTTP ${res.status} ${res.statusText}`.trim()))
         return
       }
 
