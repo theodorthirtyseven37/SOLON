@@ -39,6 +39,22 @@ export function clearToken() {
   localStorage.removeItem(CLOUD_TOKEN_KEY)
 }
 
+function extractErrorMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === 'object') {
+    const err = (body as { error?: unknown }).error
+    if (typeof err === 'string') return err
+    if (err && typeof err === 'object') {
+      const msg = (err as { message?: unknown }).message
+      if (typeof msg === 'string') return msg
+      try { return JSON.stringify(err) } catch { /* fall through */ }
+    }
+    const topMsg = (body as { message?: unknown }).message
+    if (typeof topMsg === 'string') return topMsg
+  }
+  if (typeof body === 'string' && body) return body
+  return fallback
+}
+
 export async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> {
   const apiKey = isNonLocalhost() ? getLocalApiKey() : null
   const res = await fetch(url, {
@@ -50,8 +66,8 @@ export async function fetchJSON<T>(url: string, opts?: RequestInit): Promise<T> 
     },
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: { message: res.statusText } }))
-    throw new Error(err.error?.message || err.error || res.statusText)
+    const body = await res.json().catch(() => null)
+    throw new Error(extractErrorMessage(body, `HTTP ${res.status} ${res.statusText}`.trim()))
   }
   return res.json()
 }
@@ -116,8 +132,8 @@ export async function cloudFetch<T>(path: string, opts?: RequestInit): Promise<T
   }
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(err.error || res.statusText)
+    const body = await res.json().catch(() => null)
+    throw new Error(extractErrorMessage(body, `HTTP ${res.status} ${res.statusText}`.trim()))
   }
 
   return res.json()
