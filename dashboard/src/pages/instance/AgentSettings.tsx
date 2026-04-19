@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchJSON, getLocalApiKey, isNonLocalhost } from '../../api/client'
+import { errorFromResponse, fetchJSON, getLocalApiKey, isNonLocalhost } from '../../api/client'
 import Card from '../../components/Card'
 
 function authHeaders(): Record<string, string> {
@@ -140,11 +140,7 @@ export default function AgentSettings() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ channel: 'telegram', bot_token: botToken.trim() }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText })) as Record<string, unknown>
-        const msg = typeof err.error === 'string' ? err.error : (err.error as Record<string, unknown>)?.message as string || res.statusText
-        throw new Error(msg)
-      }
+      if (!res.ok) throw await errorFromResponse(res)
       setBotToken('')
       setShowTelegramForm(false)
       setConnectSuccess('Channel added. Check the status above — the gateway may need a moment to connect.')
