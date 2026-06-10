@@ -163,6 +163,7 @@ func (l *LlamaCpp) Embeddings(ctx context.Context, req *EmbeddingRequest) (*Embe
 		return &EmbeddingResponse{
 			Embeddings: [][]float64{float32sToFloat64s(emb)},
 			Model:      req.Model,
+			TokenCount: countTokens(embCtx, req.Input),
 		}, nil
 	}
 
@@ -179,7 +180,23 @@ func (l *LlamaCpp) Embeddings(ctx context.Context, req *EmbeddingRequest) (*Embe
 	return &EmbeddingResponse{
 		Embeddings: result,
 		Model:      req.Model,
+		TokenCount: countTokens(embCtx, req.Input),
 	}, nil
+}
+
+// countTokens returns the total token count across inputs, best-effort. Token
+// counting must never fail an otherwise-successful embedding request, so an
+// input that fails to tokenize simply contributes zero.
+func countTokens(ctx *llama.Context, inputs []string) int {
+	total := 0
+	for _, s := range inputs {
+		toks, err := ctx.Tokenize(s)
+		if err != nil {
+			continue
+		}
+		total += len(toks)
+	}
+	return total
 }
 
 // ensureModel ensures the requested model is loaded. Must be called with mu held.
