@@ -58,11 +58,14 @@ func TestResolveGGUFURL(t *testing.T) {
 	const repo = "Qwen/Qwen3-Embedding-8B-GGUF"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/models/"+repo+"/tree/main", r.URL.Path)
+		// Must request a recursive listing so nested quants are surfaced.
+		assert.Equal(t, "1", r.URL.Query().Get("recursive"))
 		_, _ = fmt.Fprint(w, `[
 			{"type":"file","path":".gitattributes"},
 			{"type":"directory","path":"sub"},
 			{"type":"file","path":"Qwen3-Embedding-8B-Q4_K_M.gguf"},
-			{"type":"file","path":"Qwen3-Embedding-8B-Q8_0.gguf"}
+			{"type":"file","path":"Qwen3-Embedding-8B-Q8_0.gguf"},
+			{"type":"file","path":"nested/Qwen3-Embedding-8B-Q6_K.gguf"}
 		]`)
 	}))
 	defer srv.Close()
@@ -75,7 +78,12 @@ func TestResolveGGUFURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, srv.URL+"/"+repo+"/resolve/main/Qwen3-Embedding-8B-Q8_0.gguf", url)
 
-	// Ambiguous quant present in two distinct files -> error, caller falls back.
+	// A quant that lives in a subdirectory resolves to its nested path.
+	url, err = resolveGGUFURL(context.Background(), repo, "Q6_K")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL+"/"+repo+"/resolve/main/nested/Qwen3-Embedding-8B-Q6_K.gguf", url)
+
+	// Ambiguous quant present in several distinct files -> error, caller falls back.
 	_, err = resolveGGUFURL(context.Background(), repo, "Q")
 	assert.Error(t, err)
 }

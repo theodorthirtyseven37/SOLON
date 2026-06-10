@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -225,8 +226,15 @@ func DownloadModel(ctx context.Context, repo, fileFilter, blobsDir string, progr
 	// On any ambiguity (zero or multiple matches, network failure) we fall back
 	// to the library path below, preserving previous behavior.
 	if fileFilter != "" {
-		if url, err := resolveGGUFURL(ctx, repo, fileFilter); err == nil {
-			return DownloadFromURL(ctx, url, blobsDir, progressFn)
+		if fileURL, err := resolveGGUFURL(ctx, repo, fileFilter); err == nil {
+			return DownloadFromURL(ctx, fileURL, blobsDir, progressFn)
+		} else if progressFn != nil {
+			// Fallback to the repo scan can pull every quant in the repo, so
+			// make the reason visible rather than failing over silently.
+			progressFn(DownloadProgress{
+				Event:   "progress",
+				Message: fmt.Sprintf("could not resolve a single %q file (%v); scanning full repo", fileFilter, err),
+			})
 		}
 	}
 
@@ -357,7 +365,8 @@ type hfTreeNode struct {
 // It returns an error when zero or more than one file matches, so the caller
 // can fall back to the multi-file downloader.
 func resolveGGUFURL(ctx context.Context, repo, quant string) (string, error) {
-	treeURL := fmt.Sprintf("%s/api/models/%s/tree/main", hfBaseURL, repo)
+	// recursive=1 so quants nested in per-quant subdirectories are also listed.
+	treeURL := fmt.Sprintf("%s/api/models/%s/tree/main?recursive=1", hfBaseURL, escapePath(repo))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, treeURL, nil)
 	if err != nil {
 		return "", err
@@ -386,7 +395,18 @@ func resolveGGUFURL(ctx context.Context, repo, quant string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("no unique .gguf file for quant %q in %s", quant, repo)
 	}
-	return fmt.Sprintf("%s/%s/resolve/main/%s", hfBaseURL, repo, match), nil
+	return fmt.Sprintf("%s/%s/resolve/main/%s", hfBaseURL, escapePath(repo), escapePath(match)), nil
+}
+
+// escapePath percent-escapes each segment of a slash-separated path, leaving
+// the separators literal — HuggingFace requires literal slashes in repo ids
+// and nested file paths.
+func escapePath(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
 }
 
 // selectGGUFByQuant picks the single .gguf path whose filename matches quant.
