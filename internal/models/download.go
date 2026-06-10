@@ -3,9 +3,11 @@ package models
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -215,6 +217,27 @@ func downloadWithResume(ctx context.Context, url, filename, tmpPath, blobsDir st
 
 // DownloadModel downloads a GGUF model from HuggingFace.
 func DownloadModel(ctx context.Context, repo, fileFilter, blobsDir string, progressFn func(DownloadProgress)) (*DownloadResult, error) {
+	// Fast path: when a quantization filter is given, resolve the exact .gguf
+	// file via the HF tree API and fetch just that one file by direct URL. The
+	// hfdownloader library only applies its filename filter to nodes it detects
+	// as LFS, and that detection is unreliable for some GGUF repos — when it
+	// fails the library downloads every quant in the repo (and findGGUF then
+	// keeps an arbitrary one). Resolving the single file ourselves avoids that.
+	// On any ambiguity (zero or multiple matches, network failure) we fall back
+	// to the library path below, preserving previous behavior.
+	if fileFilter != "" {
+		if fileURL, err := resolveGGUFURL(ctx, repo, fileFilter); err == nil {
+			return DownloadFromURL(ctx, fileURL, blobsDir, progressFn)
+		} else if progressFn != nil {
+			// Fallback to the repo scan can pull every quant in the repo, so
+			// make the reason visible rather than failing over silently.
+			progressFn(DownloadProgress{
+				Event:   "progress",
+				Message: fmt.Sprintf("could not resolve a single %q file (%v); scanning full repo", fileFilter, err),
+			})
+		}
+	}
+
 	// Use a temp dir for download, then move to blobs
 	tmpDir, err := os.MkdirTemp(blobsDir, "download-*")
 	if err != nil {
@@ -325,6 +348,92 @@ func DownloadModel(ctx context.Context, repo, fileFilter, blobsDir string, progr
 		Size:     info.Size(),
 		SHA256:   hash,
 	}, nil
+}
+
+// hfBaseURL is the HuggingFace base URL. It is a variable so tests can point
+// the tree/resolve calls at a local server.
+var hfBaseURL = "https://huggingface.co"
+
+// hfTreeNode is the subset of the HuggingFace tree API response we need.
+type hfTreeNode struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// resolveGGUFURL queries the HuggingFace tree API for repo and returns the
+// direct resolve URL of the single .gguf file matching quant (e.g. "Q8_0").
+// It returns an error when zero or more than one file matches, so the caller
+// can fall back to the multi-file downloader.
+func resolveGGUFURL(ctx context.Context, repo, quant string) (string, error) {
+	// recursive=1 so quants nested in per-quant subdirectories are also listed.
+	treeURL := fmt.Sprintf("%s/api/models/%s/tree/main?recursive=1", hfBaseURL, escapePath(repo))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, treeURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("tree API for %s returned %s", repo, resp.Status)
+	}
+
+	var nodes []hfTreeNode
+	if err := json.NewDecoder(resp.Body).Decode(&nodes); err != nil {
+		return "", err
+	}
+	paths := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if n.Type == "file" {
+			paths = append(paths, n.Path)
+		}
+	}
+
+	match, ok := selectGGUFByQuant(paths, quant)
+	if !ok {
+		return "", fmt.Errorf("no unique .gguf file for quant %q in %s", quant, repo)
+	}
+	return fmt.Sprintf("%s/%s/resolve/main/%s", hfBaseURL, escapePath(repo), escapePath(match)), nil
+}
+
+// escapePath percent-escapes each segment of a slash-separated path, leaving
+// the separators literal — HuggingFace requires literal slashes in repo ids
+// and nested file paths.
+func escapePath(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
+}
+
+// selectGGUFByQuant picks the single .gguf path whose filename matches quant.
+// Matching is case-insensitive and substring-based; if several files contain
+// the quant token it narrows to those whose name (minus extension) ends with
+// it. It returns ok=false unless exactly one file matches, signalling the
+// caller to fall back rather than guess (e.g. split or multi-part GGUFs).
+func selectGGUFByQuant(paths []string, quant string) (string, bool) {
+	q := strings.ToLower(quant)
+	var contains, suffix []string
+	for _, p := range paths {
+		base := strings.ToLower(filepath.Base(p))
+		if !strings.HasSuffix(base, ".gguf") || !strings.Contains(base, q) {
+			continue
+		}
+		contains = append(contains, p)
+		if strings.HasSuffix(strings.TrimSuffix(base, ".gguf"), q) {
+			suffix = append(suffix, p)
+		}
+	}
+	if len(suffix) == 1 {
+		return suffix[0], true
+	}
+	if len(contains) == 1 {
+		return contains[0], true
+	}
+	return "", false
 }
 
 // findGGUF recursively searches for a .gguf file in the given directory.
