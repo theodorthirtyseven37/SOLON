@@ -48,7 +48,7 @@ async function handleCheckoutCompleted(env: Env, session: Record<string, unknown
 
   const instanceId = crypto.randomUUID()
 
-  // Create managed instance record
+  // Create managed server instance record
   await env.DB.prepare(
     `INSERT INTO managed_instances (id, user_id, name, tier, status, region, stripe_subscription_id)
      VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
@@ -56,7 +56,7 @@ async function handleCheckoutCompleted(env: Env, session: Record<string, unknown
     .bind(instanceId, userId, instanceName, tier, region, subscriptionId)
     .run()
 
-  // Trigger provisioning
+  // Trigger server provisioning
   if (env.PROVISIONER_URL && env.PROVISIONER_SECRET) {
     try {
       const payload = JSON.stringify({
@@ -106,12 +106,12 @@ async function handleSubscriptionDeleted(env: Env, subscription: Record<string, 
 
   if (!instance) return
 
-  // Mark for deletion
+  // Mark server for deletion
   await env.DB.prepare(
     `UPDATE managed_instances SET status = 'deleting', updated_at = datetime('now') WHERE id = ?`,
   ).bind(instance.id).run()
 
-  // Trigger deletion
+  // Trigger server deletion
   if (env.PROVISIONER_URL && env.PROVISIONER_SECRET) {
     try {
       const payload = JSON.stringify({
@@ -148,7 +148,7 @@ async function handlePaymentFailed(env: Env, invoice: Record<string, unknown>) {
   const subId = invoice.subscription as string
   if (!subId) return
 
-  // Suspend after payment failure
+  // Suspend server after payment failure
   await env.DB.prepare(
     `UPDATE managed_instances SET status = 'suspended', updated_at = datetime('now') WHERE stripe_subscription_id = ? AND status = 'running'`,
   ).bind(subId).run()

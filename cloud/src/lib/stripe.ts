@@ -2,12 +2,121 @@
 
 const STRIPE_API = 'https://api.stripe.com/v1'
 
-// Managed hosting tier pricing
-export const MANAGED_TIERS: Record<string, { name: string; price: number; serverType: string }> = {
-  starter: { name: 'Starter', price: 2900, serverType: 'cx22' },
-  pro: { name: 'Pro', price: 5900, serverType: 'cx42' },
-  gpu: { name: 'GPU', price: 34900, serverType: 'gx11' },
+// Server tier definitions — each tier is a dedicated managed server sold per month
+export interface ServerTier {
+  name: string
+  /** Price in cents. Monthly tiers: per month. Hourly tiers: per hour. */
+  priceCents: number
+  billing: 'monthly' | 'hourly'
+  provider: 'hetzner' | 'datacrunch'
+  serverType: string
+  description: string
+  features: string[]
+  vcpu: number
+  ramGb: number
+  diskGb: number
+  /** Max concurrent models (0 = unlimited) */
+  models: number
+  /** Max agent slots (0 = unlimited) */
+  agents: number
+  hasGpu: boolean
+  gpuModel?: string
+  gpuVramGb?: number
+  /** Security tier bundled with server */
+  security: 'basic' | 'standard' | 'full'
 }
+
+export const SERVER_TIERS: Record<string, ServerTier> = {
+  starter: {
+    name: 'Starter',
+    priceCents: 2500,
+    billing: 'monthly',
+    provider: 'hetzner',
+    serverType: 'cx22',
+    description: 'Perfect for development and small workloads',
+    features: ['2 vCPU / 4 GB RAM', '40 GB NVMe', '1 model', '2 agents', 'Tenant isolation', 'Automatic TLS', 'Weekly security scan'],
+    vcpu: 2,
+    ramGb: 4,
+    diskGb: 40,
+    models: 1,
+    agents: 2,
+    hasGpu: false,
+    security: 'basic',
+  },
+  pro: {
+    name: 'Pro',
+    priceCents: 4900,
+    billing: 'monthly',
+    provider: 'hetzner',
+    serverType: 'cx42',
+    description: 'For production workloads with higher throughput',
+    features: ['4 vCPU / 16 GB RAM', '80 GB NVMe', '5 models', '10 agents', 'Multi-model routing', 'WAF + Tenant isolation', 'Daily security scan', 'Request logging'],
+    vcpu: 4,
+    ramGb: 16,
+    diskGb: 80,
+    models: 5,
+    agents: 10,
+    hasGpu: false,
+    security: 'standard',
+  },
+  gpu: {
+    name: 'GPU',
+    priceCents: 29900,
+    billing: 'monthly',
+    provider: 'hetzner',
+    serverType: 'gx11',
+    description: 'Dedicated GPU for local inference with NVIDIA hardware',
+    features: ['8 vCPU / 32 GB RAM', 'NVIDIA L4 GPU', '160 GB NVMe', 'Unlimited models', 'Unlimited agents', 'Custom model deployment', 'WAF + Full monitoring', 'Continuous security scan'],
+    vcpu: 8,
+    ramGb: 32,
+    diskGb: 160,
+    models: 0,
+    agents: 0,
+    hasGpu: true,
+    gpuModel: 'NVIDIA L4',
+    gpuVramGb: 24,
+    security: 'full',
+  },
+  'gpu-a100': {
+    name: 'GPU A100',
+    priceCents: 549,
+    billing: 'hourly',
+    provider: 'datacrunch',
+    serverType: 'a100-80g',
+    description: 'High-performance A100 GPU for large models',
+    features: ['16 vCPU / 120 GB RAM', 'NVIDIA A100 80GB', '200 GB NVMe', 'Unlimited models', 'Unlimited agents', 'Full monitoring + WAF', 'Continuous security scan'],
+    vcpu: 16,
+    ramGb: 120,
+    diskGb: 200,
+    models: 0,
+    agents: 0,
+    hasGpu: true,
+    gpuModel: 'NVIDIA A100',
+    gpuVramGb: 80,
+    security: 'full',
+  },
+  'gpu-h100': {
+    name: 'GPU H100',
+    priceCents: 849,
+    billing: 'hourly',
+    provider: 'datacrunch',
+    serverType: 'h100-80g',
+    description: 'Top-tier H100 GPU for the largest models',
+    features: ['24 vCPU / 240 GB RAM', 'NVIDIA H100 80GB', '400 GB NVMe', 'Unlimited models', 'Unlimited agents', 'Full monitoring + WAF', 'Continuous security scan'],
+    vcpu: 24,
+    ramGb: 240,
+    diskGb: 400,
+    models: 0,
+    agents: 0,
+    hasGpu: true,
+    gpuModel: 'NVIDIA H100',
+    gpuVramGb: 80,
+    security: 'full',
+  },
+}
+
+/** Backwards compat alias */
+export const MANAGED_TIERS = SERVER_TIERS
 
 async function stripeRequest(
   path: string,
@@ -39,6 +148,9 @@ async function stripeRequest(
   return data
 }
 
+/**
+ * Create a Stripe Checkout session for a managed server subscription.
+ */
 export async function createCheckoutSession(
   secretKey: string,
   params: {
@@ -51,8 +163,14 @@ export async function createCheckoutSession(
     cancelUrl: string
   },
 ): Promise<{ id: string; url: string }> {
-  const tierInfo = MANAGED_TIERS[params.tier]
+  const tierInfo = SERVER_TIERS[params.tier]
   if (!tierInfo) throw new Error(`Unknown tier: ${params.tier}`)
+
+  const interval = tierInfo.billing === 'hourly' ? 'month' : 'month'
+  // For hourly tiers, we bill monthly with estimated hours (730/mo)
+  const unitAmount = tierInfo.billing === 'hourly'
+    ? tierInfo.priceCents * 730
+    : tierInfo.priceCents
 
   const data = await stripeRequest('/checkout/sessions', secretKey, 'POST', {
     'mode': 'subscription',
@@ -60,10 +178,10 @@ export async function createCheckoutSession(
     'cancel_url': params.cancelUrl,
     'customer_email': params.userEmail,
     'line_items[0][price_data][currency]': 'usd',
-    'line_items[0][price_data][product_data][name]': `Solon Managed — ${tierInfo.name}`,
-    'line_items[0][price_data][product_data][description]': `Managed Solon server (${params.tier})`,
-    'line_items[0][price_data][unit_amount]': String(tierInfo.price),
-    'line_items[0][price_data][recurring][interval]': 'month',
+    'line_items[0][price_data][product_data][name]': `Solon ${tierInfo.name} Server`,
+    'line_items[0][price_data][product_data][description]': tierInfo.description,
+    'line_items[0][price_data][unit_amount]': String(unitAmount),
+    'line_items[0][price_data][recurring][interval]': interval,
     'line_items[0][quantity]': '1',
     'metadata[user_id]': params.userId,
     'metadata[tier]': params.tier,
@@ -86,6 +204,18 @@ export async function createPortalSession(
     return_url: returnUrl,
   }) as { url: string }
   return { url: data.url }
+}
+
+/**
+ * Cancel a Stripe subscription at period end.
+ */
+export async function cancelSubscription(
+  secretKey: string,
+  subscriptionId: string,
+): Promise<void> {
+  await stripeRequest(`/subscriptions/${subscriptionId}`, secretKey, 'POST', {
+    cancel_at_period_end: 'true',
+  })
 }
 
 // Verify Stripe webhook signature (crypto.subtle compatible)

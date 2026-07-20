@@ -1,14 +1,14 @@
 import { Hono } from 'hono'
 import type { Env, UserRow, ManagedInstanceRow } from '../types'
 import { getPlanLimits } from '../lib/plans'
-import { createCheckoutSession, MANAGED_TIERS } from '../lib/stripe'
+import { createCheckoutSession, cancelSubscription, SERVER_TIERS } from '../lib/stripe'
 import { badRequest, notFound } from '../lib/errors'
 
 type Variables = { userId: string; userPlan: string }
 
 const billing = new Hono<{ Bindings: Env; Variables: Variables }>()
 
-// GET /billing
+// GET /billing — Billing overview: managed servers, account plan, available tiers
 billing.get('/', async (c) => {
   const userId = c.get('userId')
 
@@ -27,7 +27,7 @@ billing.get('/', async (c) => {
     .bind(userId)
     .first<{ cnt: number }>()
 
-  // Get managed instances
+  // Get managed server instances
   const managedInstances = await c.env.DB.prepare(
     'SELECT * FROM managed_instances WHERE user_id = ? AND status != ? ORDER BY created_at DESC',
   )
@@ -37,26 +37,40 @@ billing.get('/', async (c) => {
   return c.json({
     plan: user.plan,
     status: 'active',
-    current_period_end: null,
     usage: {
       instances: { used: instanceCount?.cnt || 0, limit: limits.instances },
-      requests: { used: 0, limit: limits.requestsPerMin * 60 * 24 },
       team_members: { used: memberCount?.cnt || 0, limit: limits.members },
     },
-    managed_instances: managedInstances?.results || [],
-    payment_method: null,
+    managed_servers: managedInstances?.results || [],
+    available_tiers: Object.entries(SERVER_TIERS).map(([key, tier]) => ({
+      key,
+      name: tier.name,
+      price_cents: tier.priceCents,
+      billing: tier.billing,
+      description: tier.description,
+      features: tier.features,
+      vcpu: tier.vcpu,
+      ram_gb: tier.ramGb,
+      disk_gb: tier.diskGb,
+      models: tier.models,
+      agents: tier.agents,
+      has_gpu: tier.hasGpu,
+      gpu_model: tier.gpuModel || null,
+      gpu_vram_gb: tier.gpuVramGb || null,
+      security: tier.security,
+    })),
   })
 })
 
-// POST /billing/checkout — Create a Stripe Checkout session for managed hosting
+// POST /billing/checkout — Create a Stripe Checkout session for a managed server
 billing.post('/checkout', async (c) => {
   const userId = c.get('userId')
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first<UserRow>()
   if (!user) throw notFound('User not found')
 
   const body = await c.req.json<{ tier: string; region?: string; name?: string }>()
-  if (!body.tier || !MANAGED_TIERS[body.tier]) {
-    throw badRequest(`Invalid tier: must be one of ${Object.keys(MANAGED_TIERS).join(', ')}`)
+  if (!body.tier || !SERVER_TIERS[body.tier]) {
+    throw badRequest(`Invalid tier: must be one of ${Object.keys(SERVER_TIERS).join(', ')}`)
   }
 
   const region = body.region || 'eu-central'
@@ -75,7 +89,7 @@ billing.post('/checkout', async (c) => {
   return c.json({ checkout_url: session.url })
 })
 
-// POST /billing/portal — Create a Stripe Customer Portal session
+// POST /billing/portal — Create a Stripe Customer Portal session for managing servers
 billing.post('/portal', async (c) => {
   const userId = c.get('userId')
 
@@ -86,7 +100,7 @@ billing.post('/portal', async (c) => {
     .first<{ stripe_subscription_id: string }>()
 
   if (!sub?.stripe_subscription_id) {
-    throw badRequest('No active subscription found')
+    throw badRequest('No active server subscription found')
   }
 
   // Get customer ID from Stripe subscription
@@ -105,7 +119,24 @@ billing.post('/portal', async (c) => {
   return c.json({ portal_url: portal.url })
 })
 
-// GET /billing/managed — List managed instances for the current user
+// POST /billing/servers/:id/cancel — Cancel a managed server subscription
+billing.post('/servers/:id/cancel', async (c) => {
+  const userId = c.get('userId')
+  const serverId = c.req.param('id')
+
+  const instance = await c.env.DB.prepare(
+    'SELECT stripe_subscription_id FROM managed_instances WHERE id = ? AND user_id = ? AND status != ?',
+  ).bind(serverId, userId, 'deleted').first<{ stripe_subscription_id: string | null }>()
+
+  if (!instance) throw notFound('Server not found')
+  if (!instance.stripe_subscription_id) throw badRequest('No subscription for this server')
+
+  await cancelSubscription(c.env.STRIPE_SECRET_KEY, instance.stripe_subscription_id)
+
+  return c.json({ status: 'canceling', message: 'Server subscription will cancel at end of billing period' })
+})
+
+// GET /billing/managed — List managed server instances for the current user
 billing.get('/managed', async (c) => {
   const userId = c.get('userId')
 

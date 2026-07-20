@@ -1,6 +1,15 @@
+/**
+ * Account-level plan limits.
+ * Revenue comes from managed server subscriptions (see SERVER_TIERS in stripe.ts).
+ * These limits gate how many self-hosted instances a user can register
+ * and how many team members they can invite.
+ */
 export interface PlanLimits {
+  /** Max registered self-hosted instances */
   instances: number
+  /** Max team members */
   members: number
+  /** Rate limit for cloud API (requests per minute) */
   requestsPerMin: number
 }
 
@@ -12,7 +21,7 @@ export const PLANS: Record<string, PlanLimits> = {
   },
   pro: {
     instances: 10,
-    members: 1,
+    members: 5,
     requestsPerMin: 300,
   },
   team: {
