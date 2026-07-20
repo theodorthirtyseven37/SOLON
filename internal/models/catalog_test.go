@@ -1,6 +1,9 @@
 package models
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -83,6 +86,77 @@ func TestLookupCatalogModel(t *testing.T) {
 	// Unknown model
 	m, _ = LookupCatalogModel("nonexistent:7b")
 	assert.Nil(t, m)
+}
+
+func TestRefreshCatalogFromRemote(t *testing.T) {
+	t.Run("valid remote catalog replaces embedded", func(t *testing.T) {
+		remoteCatalog := []CatalogModel{
+			{
+				Name:        "test-model",
+				Description: "A test model",
+				Creator:     "Test",
+				Sizes:       []string{"7b"},
+				Category:    "chat",
+				Context:     4096,
+				VRAM:        map[string]float64{"7b": 4.0},
+				Sources: map[string]ModelSource{
+					"7b": {Repo: "test/model", File: "Q4_K_M", R2URL: "https://example.com/test.gguf"},
+				},
+			},
+		}
+		data, err := json.Marshal(remoteCatalog)
+		require.NoError(t, err)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(data)
+		}))
+		defer srv.Close()
+
+		RefreshCatalogFromRemote(srv.URL)
+
+		// Catalog should now contain our test model
+		found := false
+		for _, m := range catalog {
+			if m.Name == "test-model" {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "remote catalog should have been applied")
+
+		// Restore embedded catalog for other tests
+		catalogOnce.Do(func() {}) // no-op, already done
+		_ = json.Unmarshal(embeddedCatalog, &catalog)
+	})
+
+	t.Run("invalid JSON falls back gracefully", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("#!/bin/sh\n# this is not JSON"))
+		}))
+		defer srv.Close()
+
+		before := len(catalog)
+		RefreshCatalogFromRemote(srv.URL)
+		assert.Equal(t, before, len(catalog), "catalog should not change on invalid JSON")
+	})
+
+	t.Run("HTTP error falls back gracefully", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		before := len(catalog)
+		RefreshCatalogFromRemote(srv.URL)
+		assert.Equal(t, before, len(catalog), "catalog should not change on HTTP error")
+	})
+
+	t.Run("unreachable server falls back gracefully", func(t *testing.T) {
+		before := len(catalog)
+		RefreshCatalogFromRemote("http://127.0.0.1:1") // port 1 — won't connect
+		assert.Equal(t, before, len(catalog), "catalog should not change on network error")
+	})
 }
 
 func TestDefaultModelsFromCatalog(t *testing.T) {
