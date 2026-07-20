@@ -252,7 +252,7 @@ export class SolonInstance implements DurableObject {
       case 'response': {
         const pending = this.pending.get(msg.id!);
         if (pending) {
-          pending.resolve(msg as RelayResponse);
+          pending.resolve(msg as unknown as RelayResponse);
         }
         break;
       }
@@ -260,7 +260,7 @@ export class SolonInstance implements DurableObject {
       case 'response_start': {
         const pending = this.pending.get(msg.id!);
         if (pending) {
-          pending.resolve(msg as RelayResponse);
+          pending.resolve(msg as unknown as RelayResponse);
         }
         break;
       }
