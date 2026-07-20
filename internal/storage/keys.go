@@ -178,6 +178,10 @@ func (d *DB) ValidateKey(rawKey string) (*APIKey, error) {
 		}
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating keys for validation: %w", err)
+	}
+
 	return nil, fmt.Errorf("invalid API key")
 }
 
@@ -214,6 +218,10 @@ func (d *DB) ListKeys() ([]APIKey, error) {
 		}
 
 		keys = append(keys, key)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating keys: %w", err)
 	}
 
 	return keys, nil
@@ -274,10 +282,15 @@ func (d *DB) GetUsageByKey() (map[string]KeyUsage, error) {
 		var keyID string
 		var usage KeyUsage
 		if err := rows.Scan(&keyID, &usage.RequestCount, &usage.TotalTokens); err != nil {
-			continue
+			return nil, fmt.Errorf("scanning usage by key: %w", err)
 		}
 		result[keyID] = usage
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating usage by key: %w", err)
+	}
+
 	return result, nil
 }
 

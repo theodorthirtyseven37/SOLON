@@ -226,6 +226,32 @@ func TestHasKeys(t *testing.T) {
 	assert.False(t, has)
 }
 
+func TestGetUsageByKey(t *testing.T) {
+	db := testDB(t)
+
+	// Empty usage
+	usage, err := db.GetUsageByKey()
+	require.NoError(t, err)
+	assert.Empty(t, usage)
+
+	// Create keys and log requests
+	key1, _ := db.CreateKey("key-1", "user")
+	key2, _ := db.CreateKey("key-2", "user")
+
+	_ = db.LogRequest(key1.ID, "POST", "/v1/chat/completions", "llama3.2:8b", 100, 50, 200, 200, "")
+	_ = db.LogRequest(key1.ID, "POST", "/v1/chat/completions", "llama3.2:8b", 200, 100, 300, 200, "")
+	_ = db.LogRequest(key2.ID, "POST", "/v1/embeddings", "nomic-embed-text", 50, 0, 50, 200, "")
+
+	usage, err = db.GetUsageByKey()
+	require.NoError(t, err)
+	assert.Len(t, usage, 2)
+
+	assert.Equal(t, int64(2), usage[key1.ID].RequestCount)
+	assert.Equal(t, int64(450), usage[key1.ID].TotalTokens) // (100+50) + (200+100)
+	assert.Equal(t, int64(1), usage[key2.ID].RequestCount)
+	assert.Equal(t, int64(50), usage[key2.ID].TotalTokens)
+}
+
 func TestOpenDefaultPath(t *testing.T) {
 	// Override HOME to temp dir to avoid touching real home
 	dir := t.TempDir()

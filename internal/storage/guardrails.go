@@ -61,6 +61,10 @@ func (d *DB) GetGuardrailEvents(limit int) ([]GuardrailEvent, error) {
 		events = append(events, e)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating guardrail events: %w", err)
+	}
+
 	return events, nil
 }
 
